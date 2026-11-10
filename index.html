@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#090d1c"><meta name="description" content="MetaVault — private, browser-based metadata cleaning workspace.">
+  <title>MetaVault — Metadata Cleaner</title><link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="noise"></div>
+  <header class="topbar"><a class="brand" href="#"><span class="brand-mark">✳</span><span>meta<span class="brand-light">vault</span><small>PRIVATE FILE WORKSPACE</small></span></a><div class="top-actions"><span class="privacy"><i></i> Files stay on this device</span><button class="icon-btn" aria-label="Settings">⚙</button></div></header>
+  <main class="shell">
+    <section class="hero"><div class="eyebrow"><span></span> YOUR FILES. YOUR PRIVACY.</div><h1>Clean the hidden.<br><em>Keep the original.</em></h1><p>Remove sensitive metadata from your files with a clean, private workflow.</p></section>
+    <section class="workspace glass">
+      <div class="section-head"><div><span class="kicker">01 / SELECT FILE TYPE</span><h2>What are we cleaning?</h2></div><span class="step">STEP 1 OF 3</span></div>
+      <div class="type-grid" role="group" aria-label="File type">
+        <button class="type-card active" data-type="image"><span>▧</span><b>Images</b><small>JPG · PNG · WEBP</small></button>
+        <button class="type-card" data-type="video"><span>▶</span><b>Video</b><small>MP4 · MOV · WEBM</small></button>
+        <button class="type-card" data-type="audio"><span>♫</span><b>Audio</b><small>MP3 · WAV · FLAC</small></button>
+        <button class="type-card" data-type="pdf"><span>▤</span><b>PDF</b><small>PDF documents</small></button>
+        <button class="type-card" data-type="other"><span>＋</span><b>Other</b><small>More formats</small></button>
+      </div>
+      <label class="dropzone" id="dropzone" for="fileInput"><input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp"><span class="upload-icon">↥</span><strong>Drop your file here</strong><span>or <u>browse files</u></span><small>Choose a file from your device · Nothing is uploaded</small></label>
+      <div id="filePanel" class="file-panel hidden"><div class="file-icon">▧</div><div class="file-info"><b id="fileName">—</b><small id="fileMeta">—</small></div><span class="ready">READY ✓</span><button id="removeFile" class="remove" aria-label="Remove file">×</button></div>
+      <div class="section-head options-head"><div><span class="kicker">02 / CLEANING PREFERENCES</span><h2>Make it yours.</h2></div></div>
+      <div class="options">
+        <div class="option-row"><div><b>Preserve original quality</b><small>Keep visual quality as close to the source as possible</small></div><label class="switch"><input id="preserve" type="checkbox" checked><span></span></label></div>
+        <div class="option-row"><div><b>Remove all metadata</b><small>EXIF · GPS · Device · Author · Timestamps</small></div><label class="switch"><input id="strip" type="checkbox" checked><span></span></label></div>
+        <div class="format-row"><div><b>Output format</b><small id="formatHint">Original format is retained</small></div><select id="format" disabled><option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WEBP</option></select></div>
+      </div>
+      <button class="process-btn" id="process" disabled><span>✦</span> CLEAN MY FILE <span class="arrow">↗</span></button>
+      <p class="local-note">⌁ &nbsp;Processing happens locally in your browser for supported formats.</p>
+      <div id="result" class="result hidden" aria-live="polite"><div class="result-title"><span class="success-mark">✓</span><div><b id="resultTitle">Cleaning complete</b><small id="resultSub">Your cleaned file is ready.</small></div></div><div class="result-stats"><div><small>OUTPUT FILE</small><b id="outName">—</b></div><div><small>OUTPUT SIZE</small><b id="outSize">—</b></div></div><button id="download" class="download-btn">↓ &nbsp; DOWNLOAD CLEAN FILE</button><p class="report" id="report">Image re-encoded without embedded metadata. Check the output before sharing.</p></div>
+    </section>
+    <footer><span>✳ METAVAULT</span><span>BUILT FOR PRIVACY · BETA</span></footer>
+  </main>
+  <script src="./app.js"></script>
+</body></html>
