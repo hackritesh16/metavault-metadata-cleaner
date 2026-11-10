@@ -4,6 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.content.Intent
+import android.provider.Settings
+import android.net.Uri as AndroidUri
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,6 +45,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = android.graphics.Color.rgb(8, 13, 28)
         window.navigationBarColor = android.graphics.Color.rgb(8, 13, 28)
+        if (Build.VERSION.SDK_INT >= 33) {
+            requestPermissions(arrayOf(
+                android.Manifest.permission.READ_MEDIA_IMAGES,
+                android.Manifest.permission.READ_MEDIA_VIDEO,
+                android.Manifest.permission.READ_MEDIA_AUDIO
+            ), 410)
+        } else if (Build.VERSION.SDK_INT >= 23) {
+            requestPermissions(arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE), 410)
+        }
         setContent { MetaVaultScreen() }
     }
 }
@@ -113,6 +127,33 @@ private fun MetaVaultScreen() {
                     Text("Clean the hidden.", fontSize = 34.sp, fontWeight = FontWeight.Bold)
                     Text("Keep the original.", fontSize = 30.sp, fontWeight = FontWeight.Bold, color = Mint)
                     Text("Remove hidden image metadata privately.", color = Muted, fontSize = 13.sp)
+                }
+                GlassCard {
+                    Text("DEVICE LIBRARY ACCESS", color = Mint, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        if (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()) "Full file access is enabled."
+                        else "Normal media permissions and the file picker work without full access.",
+                        color = Muted, fontSize = 11.sp
+                    )
+                    OutlinedButton(
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+                                val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                                    data = AndroidUri.parse("package:${context.packageName}")
+                                }
+                                runCatching { context.startActivity(intent) }
+                                    .onFailure { status = "Open Android Settings and allow file access if available." }
+                            } else {
+                                status = "Full file access is already enabled, or this Android version uses normal permissions."
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.FolderOpen, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("OPTIONAL: ALLOW ACCESS TO ALL FILES")
+                    }
+                    Text("If you skip this, choose files manually. Android may restrict this special permission.", color = Muted, fontSize = 10.sp)
                 }
                 GlassCard {
                     Text("01  /  SELECT YOUR FILE", color = Mint, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
