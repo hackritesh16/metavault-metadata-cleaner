@@ -136,7 +136,16 @@ private fun MetaVaultApp() {
             Scaffold(
                 containerColor = Color.Transparent,
                 bottomBar = {
-                    NavigationBar(containerColor = Color(0xF20A1426), tonalElevation = 0.dp) {
+                    NavigationBar(
+                        containerColor = Color(0xF20A1426),
+                        tonalElevation = 0.dp,
+                        modifier = Modifier.border(1.dp, Color(0x2239F5B5), RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
+                    ) {
+                        val activeTab = when (page) {
+                            Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+                            Page.ABOUT -> Page.SETTINGS
+                            else -> page
+                        }
                         listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
                             val icon = when (item) {
                                 Page.HOME -> Icons.Default.Home
@@ -146,7 +155,7 @@ private fun MetaVaultApp() {
                                 else -> Icons.Default.Settings
                             }
                             NavigationBarItem(
-                                selected = page == item,
+                                selected = activeTab == item,
                                 onClick = { page = item },
                                 icon = { Icon(icon, contentDescription = item.label) },
                                 label = { Text(item.label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
@@ -265,6 +274,14 @@ private fun Header(onAbout: () -> Unit) {
 private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Page) -> Unit, onHistory: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+            Surface(color = Color(0x2239F5B5), shape = RoundedCornerShape(50)) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(6.dp).background(Mint, RoundedCornerShape(50)))
+                    Spacer(Modifier.width(7.dp))
+                    Text("PRIVATE FILE WORKSPACE  ·  BETA", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
             Text("Your files.", color = Color.White, fontSize = 33.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp)
             Text("Your privacy.", color = Mint, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.3).sp)
             Text("A smarter, safer way to prepare photos and personal files before sharing them. Review, clean supported image metadata, and export a fresh copy — all on your device.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
@@ -378,7 +395,12 @@ private fun CleanerPage(
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("Cleaner studio", "Inspect your selection, choose options, then export a fresh copy.")
         GlassCard(accent = Mint) {
-            Text("SELECTED FILE", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("SELECTED FILE", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+                Surface(color = if (hasFile) Color(0x2239F5B5) else Color(0x22A8B8D0), shape = RoundedCornerShape(50)) {
+                    Text(if (hasFile) "READY TO REVIEW" else "AWAITING FILE", color = if (hasFile) Mint else Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.InsertDriveFile, null, tint = Aqua, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(10.dp))
@@ -418,7 +440,13 @@ private fun CleanerPage(
             }
         }
         GlassCard { Text(status, color = if (ready) Mint else Muted, fontSize = 12.sp) }
-        Text("Supported in this build: JPG · PNG · WEBP. Video, audio and PDF cleaning are not yet implemented.", color = Muted, fontSize = 10.sp)
+        GlassCard(accent = Aqua) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Info, null, tint = Aqua, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Supported now: JPG · PNG · WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, fontSize = 10.sp)
+            }
+        }
     }
 }
 
@@ -476,7 +504,8 @@ private fun AboutPage() {
 
 @Composable
 private fun PageHeading(title: String, subtitle: String) {
-    Column(Modifier.padding(top = 8.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(Modifier.padding(top = 8.dp, bottom = 2.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Box(Modifier.width(34.dp).height(3.dp).background(Brush.horizontalGradient(listOf(Mint, Aqua, Violet)), RoundedCornerShape(50)))
         Text(title, fontSize = 29.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1).sp)
         Text(subtitle, color = Muted, fontSize = 12.sp)
     }
