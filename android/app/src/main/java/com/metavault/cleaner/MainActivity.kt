@@ -190,7 +190,6 @@ private fun MetaVaultApp() {
             onSurfaceVariant = Color(0xFFD0DCEC), surfaceVariant = Color(0xFF1B2B42)
         ),
         typography = Typography(
-            defaultFontFamily = DisplayFont,
             headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.2).sp),
             headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
             titleLarge = MaterialTheme.typography.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
@@ -390,33 +389,9 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
         SectionTitle("EXPLORE CATEGORIES", "Choose a file type")
         CategoryGrid(onCategory)
         GlassCard(accent = Mint) {
-            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Text(libraryStatus, color = Muted, fontSize = 12.sp)
-            val grouped = media.groupBy { it.category }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Photo", "Video", "Audio").forEach { category ->
-                    Column(Modifier.weight(1f)) {
-                        Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(category.uppercase(), color = Muted, fontSize = 9.sp)
-                    }
-                }
-            }
-            if (media.isEmpty()) {
-                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 12.sp)
-            } else {
-                media.take(100).forEach { item ->
-                    Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(item.name, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 10.sp, maxLines = 1)
-                        }
-                        Icon(Icons.Default.ChevronRight, null, tint = Mint)
-                    }
-                    HorizontalDivider(color = Color(0x1FFFFFFF))
-                }
-            }
+            Text("ON-DEVICE PRIVACY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text("Your files are processed locally. Browse your library to choose accessible media, or use the secure file picker.", color = Muted, fontSize = 12.sp)
+            GradientButton("VIEW DEVICE LIBRARY", Icons.Default.FolderOpen, onBrowse)
         }
         GlassCard(accent = Aqua) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -450,6 +425,35 @@ private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: Li
         GlassCard(accent = Aqua) {
             Text("ACCESS & PRIVACY", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             Text("Only files you select are opened. Full-storage access is optional and is not required for the system picker.", color = Muted, fontSize = 12.sp)
+        }
+        GlassCard(accent = Mint) {
+            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text(libraryStatus, color = Muted, fontSize = 12.sp)
+            val grouped = media.groupBy { it.category }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Photo", "Video", "Audio").forEach { category ->
+                    Column(Modifier.weight(1f)) {
+                        Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(category.uppercase(), color = Muted, fontSize = 10.sp)
+                    }
+                }
+            }
+            if (media.isEmpty()) {
+                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 12.sp)
+            } else {
+                media.take(100).forEach { item ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 10.sp, maxLines = 1)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = Mint)
+                    }
+                    HorizontalDivider(color = Color(0x1FFFFFFF))
+                }
+            }
         }
     }
 }
