@@ -286,6 +286,17 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
             Text("Your privacy.", color = Mint, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.3).sp)
             Text("A smarter, safer way to prepare photos and personal files before sharing them. Review, clean supported image metadata, and export a fresh copy — all on your device.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf("ON-DEVICE" to Mint, "NO CLOUD" to Aqua, "SAFE EXPORT" to Violet).forEach { (label, tint) ->
+                Surface(color = tint.copy(alpha = 0.10f), shape = RoundedCornerShape(50), modifier = Modifier.weight(1f)) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(5.dp).background(tint, RoundedCornerShape(50)))
+                        Spacer(Modifier.width(5.dp))
+                        Text(label, color = tint, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.35.sp, maxLines = 1)
+                    }
+                }
+            }
+        }
         GlassCard(accent = Mint) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
