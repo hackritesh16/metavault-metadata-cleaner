@@ -265,16 +265,16 @@ private fun Header(onAbout: () -> Unit) {
 private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Page) -> Unit, onHistory: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.padding(top = 8.dp, bottom = 4.dp)) {
-            Text("Your privacy,", color = Color.White, fontSize = 33.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp)
-            Text("under your control.", color = Mint, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.3).sp)
-            Text("Clean hidden metadata. Keep your files yours.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+            Text("Your files.", color = Color.White, fontSize = 33.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.4).sp)
+            Text("Your privacy.", color = Mint, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.3).sp)
+            Text("A smarter, safer way to prepare photos and personal files before sharing them. Review, clean supported image metadata, and export a fresh copy — all on your device.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
         }
         GlassCard(accent = Mint) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
                     Text("PRIVATE FILE WORKSPACE", color = Mint, fontSize = 9.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
-                    Text("One vault. More control.", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("Processing stays on your device. Originals stay safe.", color = Muted, fontSize = 11.sp)
+                    Text("Your privacy deserves a cleaner.", fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("MetaVault helps remove hidden image details before sharing. Choose your files, review the options, and save a separate clean copy. Your original stays untouched.", color = Muted, fontSize = 11.sp)
                 }
                 Icon(Icons.Default.Security, null, tint = Mint, modifier = Modifier.size(52.dp))
             }
@@ -459,16 +459,16 @@ private fun SettingsPage(onAbout: () -> Unit, onPermissions: () -> Unit, status:
 @Composable
 private fun AboutPage() {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("About MetaVault", "Clean · Protect · Stay Private")
+        PageHeading("About MetaVault", "A private workspace for cleaner file sharing.")
         GlassCard(accent = Mint) {
             Text("M", color = Mint, fontSize = 54.sp, fontWeight = FontWeight.Black)
             Text("MetaVault", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-            Text("A privacy-first metadata cleaner designed around local file processing and safe exports.", color = Muted, fontSize = 12.sp)
+            Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos can contain hidden details such as capture time, device information and location tags. When supported, MetaVault re-encodes the image to create a cleaner copy before you share it. Processing happens locally on your device, and your original file is never overwritten.", color = Muted, fontSize = 12.sp)
         }
         GlassCard {
             InfoLine("01", "Local by design", "The current cleaning flow runs on your device.")
             InfoLine("02", "Originals stay safe", "Cleaned images are saved as a new file.")
-            InfoLine("03", "Honest support", "Only JPG, PNG and WEBP image cleaning is currently implemented.")
+            InfoLine("03", "Honest support", "Current support: JPG, PNG and WEBP image cleaning. Video, audio, PDF and Office document cleaning are planned and are not active in this build.")
         }
         Text("Android beta · Features are being developed incrementally.", color = Muted, fontSize = 10.sp)
     }
