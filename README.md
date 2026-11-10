@@ -11,7 +11,7 @@ A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 **Image-cleaning MVP (JPG, PNG and WEBP).** The app runs entirely in the browser for the supported image workflow. Files are never sent to a server.
 
 ## Features
-- Premium dark glass / haze UI with responsive mobile layout
+- Vault-dark interface with self-hosted fonts (no third-party requests) and a responsive mobile layout
 - File-type selector for images, video, audio, PDF and other documents
 - Drag-and-drop and local file picker
 - Image preview, file details and processing progress
