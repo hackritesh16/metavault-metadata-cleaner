@@ -16,7 +16,7 @@ A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 - Downloadable clean image copy and processing report
 - Original file is never modified
 
-## Run locally
+## Native Android app\n\nA Kotlin + Jetpack Compose Android starter is available in the [`android/`](android/) folder. Open that folder in Android Studio; see [`android/README.md`](android/README.md) for setup. The first Android MVP cleans JPG, PNG and WEBP images locally. Video, audio, PDF and Office processing are not implemented yet.\n\n## Run locally
 
 Open `index.html` in a modern browser, or serve the folder with any static web server.
 
