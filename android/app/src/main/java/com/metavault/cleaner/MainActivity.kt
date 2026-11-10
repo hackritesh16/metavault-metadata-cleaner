@@ -185,9 +185,12 @@ private fun MetaVaultApp() {
     MaterialTheme(
         colorScheme = darkColorScheme(
             background = Ink, surface = Panel, primary = Mint, secondary = Aqua,
-            tertiary = Violet, onBackground = Color.White, onSurface = Color.White
+            tertiary = Violet, onBackground = Color.White, onSurface = Color.White,
+            onPrimary = Color.White, onSecondary = Color.White, onTertiary = Color.White,
+            onSurfaceVariant = Color(0xFFD0DCEC), surfaceVariant = Color(0xFF1B2B42)
         ),
         typography = Typography(
+            defaultFontFamily = DisplayFont,
             headlineLarge = MaterialTheme.typography.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.ExtraBold, letterSpacing = (-1.2).sp),
             headlineMedium = MaterialTheme.typography.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp),
             titleLarge = MaterialTheme.typography.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.Bold),
@@ -222,7 +225,7 @@ private fun MetaVaultApp() {
                                 selected = activeTab == item,
                                 onClick = { page = item },
                                 icon = { Icon(icon, contentDescription = item.label) },
-                                label = { Text(item.label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold) },
+                                label = { Text(item.label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                                 colors = NavigationBarItemDefaults.colors(
                                     selectedIconColor = Mint, selectedTextColor = Mint,
                                     indicatorColor = Color(0x2239F5B5), unselectedIconColor = Muted,
@@ -309,7 +312,7 @@ private fun MetaVaultApp() {
                             Page.ABOUT -> AboutPage()
                         }
                     }
-                    Text("METAVAULT  •  CLEAN · PROTECT · STAY PRIVATE", color = Muted, fontSize = 9.sp, letterSpacing = 1.5.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
+                    Text("METAVAULT  •  CLEAN · PROTECT · STAY PRIVATE", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp, modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp))
                 }
             }
         }
@@ -328,14 +331,14 @@ private fun Header(onAbout: () -> Unit) {
             Spacer(Modifier.width(10.dp))
             Column {
                 Text("MetaVault", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.7).sp)
-                Text("METADATA CLEANER", color = Muted, fontSize = 8.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Bold)
+                Text("METADATA CLEANER", color = Muted, fontSize = 9.sp, letterSpacing = 2.2.sp, fontWeight = FontWeight.Bold)
             }
         }
         Surface(color = Color(0x2239F5B5), shape = RoundedCornerShape(50), modifier = Modifier.clickable { onAbout() }) {
             Row(Modifier.padding(horizontal = 11.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Shield, null, tint = Mint, modifier = Modifier.size(14.dp))
                 Spacer(Modifier.width(5.dp))
-                Text("LOCAL ONLY", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Text("LOCAL ONLY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -349,7 +352,7 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
                 Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).background(Mint, RoundedCornerShape(50)))
                     Spacer(Modifier.width(7.dp))
-                    Text("PRIVATE FILE WORKSPACE  ·  BETA", color = Mint, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
+                    Text("PRIVATE FILE WORKSPACE  ·  BETA", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.1.sp)
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -363,7 +366,7 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
                     Row(Modifier.padding(horizontal = 8.dp, vertical = 9.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(5.dp).background(tint, RoundedCornerShape(50)))
                         Spacer(Modifier.width(5.dp))
-                        Text(label, color = tint, fontSize = 8.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.35.sp, maxLines = 1)
+                        Text(label, color = tint, fontSize = 9.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.35.sp, maxLines = 1)
                     }
                 }
             }
@@ -371,9 +374,9 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
         GlassCard(accent = Mint) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    Text("PRIVATE FILE WORKSPACE", color = Mint, fontSize = 9.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
+                    Text("PRIVATE FILE WORKSPACE", color = Mint, fontSize = 10.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
                     Text("Your privacy deserves a cleaner.", fontSize = 21.sp, fontWeight = FontWeight.Bold)
-                    Text("MetaVault helps remove hidden image details before sharing. Choose your files, review the options, and save a separate clean copy. Your original stays untouched.", color = Muted, fontSize = 11.sp)
+                    Text("MetaVault helps remove hidden image details before sharing. Choose your files, review the options, and save a separate clean copy. Your original stays untouched.", color = Muted, fontSize = 12.sp)
                 }
                 Icon(Icons.Default.Security, null, tint = Mint, modifier = Modifier.size(52.dp))
             }
@@ -387,27 +390,27 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
         SectionTitle("EXPLORE CATEGORIES", "Choose a file type")
         CategoryGrid(onCategory)
         GlassCard(accent = Mint) {
-            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Text(libraryStatus, color = Muted, fontSize = 11.sp)
+            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text(libraryStatus, color = Muted, fontSize = 12.sp)
             val grouped = media.groupBy { it.category }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Photo", "Video", "Audio").forEach { category ->
                     Column(Modifier.weight(1f)) {
                         Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(category.uppercase(), color = Muted, fontSize = 8.sp)
+                        Text(category.uppercase(), color = Muted, fontSize = 9.sp)
                     }
                 }
             }
             if (media.isEmpty()) {
-                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 11.sp)
+                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 12.sp)
             } else {
                 media.take(100).forEach { item ->
                     Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(item.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 9.sp, maxLines = 1)
+                            Text(item.name, color = Color.White, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 10.sp, maxLines = 1)
                         }
                         Icon(Icons.Default.ChevronRight, null, tint = Mint)
                     }
@@ -421,12 +424,12 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text("Ready to clean?", fontWeight = FontWeight.Bold)
-                    Text("Start with a supported image file.", color = Muted, fontSize = 11.sp)
+                    Text("Start with a supported image file.", color = Muted, fontSize = 12.sp)
                 }
             }
             GradientButton("OPEN CLEANER", Icons.Default.CleaningServices, onClean)
         }
-        Text("RECENT ACTIVITY", color = Muted, fontSize = 10.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onHistory() })
+        Text("RECENT ACTIVITY", color = Muted, fontSize = 11.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onHistory() })
         Row(Modifier.fillMaxWidth().clickable { onHistory() }, verticalAlignment = Alignment.CenterVertically) {
             Text("View cleaning history", color = Color.White, fontSize = 13.sp, modifier = Modifier.weight(1f))
             Icon(Icons.Default.ChevronRight, null, tint = Mint)
@@ -439,14 +442,14 @@ private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: Li
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         PageHeading("File library", "Browse by category and choose files securely.")
         GlassCard {
-            Text("BROWSE DEVICE FILES", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+            Text("BROWSE DEVICE FILES", color = Mint, fontSize = 11.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
             Text("Use Android's system picker to access the files you choose. MetaVault does not silently scan your storage.", color = Muted, fontSize = 12.sp)
             GradientButton("BROWSE ALL FILES", Icons.Default.FolderOpen, onPick)
         }
         CategoryGrid(onCategory)
         GlassCard(accent = Aqua) {
-            Text("ACCESS & PRIVACY", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text("Only files you select are opened. Full-storage access is optional and is not required for the system picker.", color = Muted, fontSize = 11.sp)
+            Text("ACCESS & PRIVACY", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text("Only files you select are opened. Full-storage access is optional and is not required for the system picker.", color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -467,7 +470,7 @@ private fun CategoryGrid(onCategory: (Page) -> Unit) {
                     GlassCard(Modifier.weight(1f).clickable { onCategory(target) }, accent = tint) {
                         Icon(icon, null, tint = tint, modifier = Modifier.size(25.dp))
                         Text(target.label, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text(if (target == Page.PHOTOS) "Clean supported images" else "Browse files", color = Muted, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(if (target == Page.PHOTOS) "Clean supported images" else "Browse files", color = Muted, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (rowItems.size == 1) Spacer(Modifier.weight(1f))
@@ -481,13 +484,13 @@ private fun CategoryPage(page: Page, formats: String, description: String, suppo
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         PageHeading(page.label, description)
         GlassCard(accent = when (page) { Page.PHOTOS -> Mint; Page.VIDEOS -> Aqua; Page.AUDIO -> Violet; else -> Blue }) {
-            Text("FILE TYPE", color = Mint, fontSize = 9.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
+            Text("FILE TYPE", color = Mint, fontSize = 10.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
             Text(formats, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Text(support, color = Muted, fontSize = 12.sp)
             GradientButton("CHOOSE ${page.label.uppercase()}", Icons.Default.FolderOpen, onPick)
         }
         GlassCard {
-            Text("HOW IT WORKS", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Text("HOW IT WORKS", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             InfoLine("01", "Choose files", "Select only the files you want to work with.")
             InfoLine("02", "Review support", "MetaVault tells you what it can process.")
             InfoLine("03", "Save safely", "The original is kept untouched.")
@@ -507,9 +510,9 @@ private fun CleanerPage(
         PageHeading("Cleaner studio", "Inspect your selection, choose options, then export a fresh copy.")
         GlassCard(accent = Mint) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("SELECTED FILE", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+                Text("SELECTED FILE", color = Mint, fontSize = 11.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
                 Surface(color = if (hasFile) Color(0x2239F5B5) else Color(0x22A8B8D0), shape = RoundedCornerShape(50)) {
-                    Text(if (hasFile) "READY TO REVIEW" else "AWAITING FILE", color = if (hasFile) Mint else Muted, fontSize = 8.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+                    Text(if (hasFile) "READY TO REVIEW" else "AWAITING FILE", color = if (hasFile) Mint else Muted, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -517,18 +520,18 @@ private fun CleanerPage(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (hasFile) fileName else "No file selected", fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(if (hasFile) mime else "Choose a file to get started", color = Muted, fontSize = 10.sp)
+                    Text(if (hasFile) mime else "Choose a file to get started", color = Muted, fontSize = 11.sp)
                 }
             }
             GradientButton("CHOOSE FILE", Icons.Default.FolderOpen, onPick)
         }
         GlassCard {
-            Text("CLEANING OPTIONS", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+            Text("CLEANING OPTIONS", color = Mint, fontSize = 11.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
             SettingRow("Remove image metadata", "Supported image metadata is stripped", remove, onRemove)
             HorizontalDivider(color = Color(0x22FFFFFF))
             SettingRow("Keep original format", "Best effort; image is re-encoded", preserve, onPreserve)
             if (!preserve) {
-                Text("OUTPUT FORMAT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text("OUTPUT FORMAT", color = Muted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                     listOf("JPG" to "image/jpeg", "PNG" to "image/png", "WEBP" to "image/webp").forEach { (label, value) ->
                         FilterChip(selected = output == value, onClick = { onOutput(value) }, label = { Text(label) })
@@ -536,18 +539,18 @@ private fun CleanerPage(
                 }
             }
         }
-        Button(onClick = onClean, enabled = hasFile && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
+        Button(onClick = onClean, enabled = hasFile && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Violet, contentColor = Color.White, disabledContentColor = Color.White)) {
             if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null)
-            Spacer(Modifier.width(9.dp)); Text(if (busy) "PROCESSING LOCALLY…" else "CLEAN SELECTED FILE", fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(9.dp)); Text(if (busy) "PROCESSING LOCALLY…" else "CLEAN SELECTED FILE", color = Color.White, fontWeight = FontWeight.Bold)
         }
         AnimatedVisibility(ready) {
             GlassCard(accent = Mint) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Verified, null, tint = Mint, modifier = Modifier.size(28.dp))
-                    Column(Modifier.weight(1f)) { Text("Clean copy ready", fontWeight = FontWeight.Bold); Text(saveName, color = Muted, fontSize = 10.sp) }
+                    Column(Modifier.weight(1f)) { Text("Clean copy ready", fontWeight = FontWeight.Bold); Text(saveName, color = Muted, fontSize = 11.sp) }
                 }
                 GradientButton("SAVE CLEAN COPY", Icons.Default.Download, onSave)
-                Text("Dimensions are retained. Re-encoding may change pixels or file size; this is not byte-for-byte lossless.", color = Muted, fontSize = 10.sp)
+                Text("Dimensions are retained. Re-encoding may change pixels or file size; this is not byte-for-byte lossless.", color = Muted, fontSize = 11.sp)
             }
         }
         GlassCard { Text(status, color = if (ready) Mint else Muted, fontSize = 12.sp) }
@@ -555,7 +558,7 @@ private fun CleanerPage(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, null, tint = Aqua, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Supported now: JPG · PNG · WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, fontSize = 10.sp)
+                Text("Supported now: JPG · PNG · WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, fontSize = 11.sp)
             }
         }
     }
@@ -569,10 +572,10 @@ private fun HistoryPage(history: List<HistoryEntry>) {
             GlassCard(accent = Aqua) {
                 Icon(Icons.Default.History, null, tint = Aqua, modifier = Modifier.size(34.dp))
                 Text("Nothing here yet", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                Text("Your successful clean-copy exports will appear here. History is kept in memory for this session only.", color = Muted, fontSize = 11.sp)
+                Text("Your successful clean-copy exports will appear here. History is kept in memory for this session only.", color = Muted, fontSize = 12.sp)
             }
         } else history.forEach {
-            GlassCard { Text(it.name, fontWeight = FontWeight.Bold); Text(it.detail, color = Muted, fontSize = 11.sp) }
+            GlassCard { Text(it.name, fontWeight = FontWeight.Bold); Text(it.detail, color = Muted, fontSize = 12.sp) }
         }
     }
 }
@@ -582,15 +585,15 @@ private fun SettingsPage(onAbout: () -> Unit, onPermissions: () -> Unit, status:
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("Settings", "Manage access and learn how MetaVault handles your files.")
         GlassCard(accent = Mint) {
-            Text("PRIVACY & ACCESS", color = Mint, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+            Text("PRIVACY & ACCESS", color = Mint, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             SettingsAction("Optional file access", "Open Android's app-specific access settings", Icons.Default.FolderOpen, onPermissions)
             HorizontalDivider(color = Color(0x22FFFFFF))
             SettingsAction("Privacy & about", "How local processing works", Icons.Default.Shield, onAbout)
         }
         GlassCard {
-            Text("CURRENT SESSION", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-            Text(status, color = Muted, fontSize = 11.sp)
-            Text("No cloud upload or account is required for the current image-cleaning workflow.", color = Muted, fontSize = 10.sp)
+            Text("CURRENT SESSION", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            Text(status, color = Muted, fontSize = 12.sp)
+            Text("No cloud upload or account is required for the current image-cleaning workflow.", color = Muted, fontSize = 11.sp)
         }
     }
 }
@@ -609,7 +612,7 @@ private fun AboutPage() {
             InfoLine("02", "Originals stay safe", "Cleaned images are saved as a new file.")
             InfoLine("03", "Honest support", "Current support: JPG, PNG and WEBP image cleaning. Video, audio, PDF and Office document cleaning are planned and are not active in this build.")
         }
-        Text("Android beta · Features are being developed incrementally.", color = Muted, fontSize = 10.sp)
+        Text("Android beta · Features are being developed incrementally.", color = Muted, fontSize = 11.sp)
     }
 }
 
@@ -625,7 +628,7 @@ private fun PageHeading(title: String, subtitle: String) {
 @Composable
 private fun SectionTitle(eyebrow: String, title: String) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(eyebrow, color = Mint, fontSize = 9.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
+        Text(eyebrow, color = Mint, fontSize = 10.sp, letterSpacing = 1.8.sp, fontWeight = FontWeight.Bold)
         Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -646,11 +649,11 @@ private fun GradientButton(label: String, icon: androidx.compose.ui.graphics.vec
     Button(
         onClick = onClick, modifier = Modifier.fillMaxWidth().height(50.dp),
         shape = RoundedCornerShape(15.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent, contentColor = Color.White, disabledContentColor = Color.White),
         contentPadding = PaddingValues(1.dp)
     ) {
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(Color(0xFF17B98D), Color(0xFF168FC4), Color(0xFF5367DB))), RoundedCornerShape(14.dp)), contentAlignment = Alignment.Center) {
-            Row(verticalAlignment = Alignment.CenterVertically) { Icon(icon, null); Spacer(Modifier.width(9.dp)); Text(label, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp, fontSize = 11.sp) }
+            Row(verticalAlignment = Alignment.CenterVertically) { Icon(icon, null); Spacer(Modifier.width(9.dp)); Text(label, color = Color.White, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.6.sp, fontSize = 12.sp) }
         }
     }
 }
@@ -659,7 +662,7 @@ private fun GradientButton(label: String, icon: androidx.compose.ui.graphics.vec
 private fun StatTile(value: String, label: String, tint: Color, modifier: Modifier = Modifier) {
     GlassCard(modifier, tint) {
         Text(value, color = tint, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
-        Text(label, color = Muted, fontSize = 8.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.Bold)
+        Text(label, color = Muted, fontSize = 9.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -670,7 +673,7 @@ private fun InfoLine(number: String, title: String, detail: String) {
         Spacer(Modifier.width(11.dp))
         Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Text(detail, color = Muted, fontSize = 10.sp)
+            Text(detail, color = Muted, fontSize = 11.sp)
         }
     }
 }
@@ -680,7 +683,7 @@ private fun SettingsAction(title: String, detail: String, icon: androidx.compose
     Row(Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = Mint)
         Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp); Text(detail, color = Muted, fontSize = 10.sp) }
+        Column(Modifier.weight(1f)) { Text(title, fontWeight = FontWeight.Bold, fontSize = 12.sp); Text(detail, color = Muted, fontSize = 11.sp) }
         Icon(Icons.Default.ChevronRight, null, tint = Muted)
     }
 }
@@ -690,7 +693,7 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
-            Text(subtitle, color = Muted, fontSize = 10.sp)
+            Text(subtitle, color = Muted, fontSize = 11.sp)
         }
         Switch(checked = checked, onCheckedChange = onChecked)
     }
