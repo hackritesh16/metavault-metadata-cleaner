@@ -65,7 +65,10 @@ private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia>
     val resolver = context.contentResolver
     val results = mutableListOf<DeviceMedia>()
     fun read(collection: Uri, category: String, permission: String) {
-        if (Build.VERSION.SDK_INT >= 23 && context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return
+        val hasPermission = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED ||
+            (Build.VERSION.SDK_INT >= 34 && (category == "Photo" || category == "Video") &&
+                context.checkSelfPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)
+        if (Build.VERSION.SDK_INT >= 23 && !hasPermission) return
         val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
         runCatching {
             resolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_MODIFIED + " DESC")?.use { cursor ->
