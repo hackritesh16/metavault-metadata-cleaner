@@ -1,5 +1,9 @@
 # MetaVault — Metadata Cleaner
 
+## For AI coding agents
+
+Start with [AGENTS.md](AGENTS.md), then read the full [MetaVault master product and engineering brief](docs/METAVAULT_MASTER_PROMPT.md). These files explain the product goal, privacy constraints, implementation priorities, current limitations, and how to build and verify changes.
+
 A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 
 ## Current release
