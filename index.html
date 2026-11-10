@@ -22,7 +22,7 @@
         <button class="type-card" data-type="other"><span>＋</span><b>Other</b><small>More formats</small></button>
       </div>
       <label class="dropzone" id="dropzone" for="fileInput"><input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp"><span class="upload-icon">↥</span><strong>Drop your file here</strong><span>or <u>browse files</u></span><small>Choose a file from your device · Nothing is uploaded</small></label>
-      <div id="filePanel" class="file-panel hidden"><div class="file-icon">▧</div><div class="file-info"><b id="fileName">—</b><small id="fileMeta">—</small></div><span class="ready">READY ✓</span><button id="removeFile" class="remove" aria-label="Remove file">×</button></div>
+      <div id="filePanel" class="file-panel hidden"><div class="file-icon" id="fileThumb">▧</div><div class="file-info"><b id="fileName">—</b><small id="fileMeta">—</small></div><span class="ready">READY ✓</span><button id="removeFile" class="remove" aria-label="Remove file">×</button></div>
       <div class="section-head options-head"><div><span class="kicker">02 / CLEANING PREFERENCES</span><h2>Make it yours.</h2></div></div>
       <div class="options">
         <div class="option-row"><div><b>Preserve original quality</b><small>Keep visual quality as close to the source as possible</small></div><label class="switch"><input id="preserve" type="checkbox" checked><span></span></label></div>
@@ -30,8 +30,8 @@
         <div class="format-row"><div><b>Output format</b><small id="formatHint">Original format is retained</small></div><select id="format" disabled><option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WEBP</option></select></div>
       </div>
       <button class="process-btn" id="process" disabled><span>✦</span> CLEAN MY FILE <span class="arrow">↗</span></button>
-      <p class="local-note">⌁ &nbsp;Processing happens locally in your browser for supported formats.</p>
-      <div id="result" class="result hidden" aria-live="polite"><div class="result-title"><span class="success-mark">✓</span><div><b id="resultTitle">Cleaning complete</b><small id="resultSub">Your cleaned file is ready.</small></div></div><div class="result-stats"><div><small>OUTPUT FILE</small><b id="outName">—</b></div><div><small>OUTPUT SIZE</small><b id="outSize">—</b></div></div><button id="download" class="download-btn">↓ &nbsp; DOWNLOAD CLEAN FILE</button><p class="report" id="report">Image re-encoded without embedded metadata. Check the output before sharing.</p></div>
+      <p class="local-note">⌁ &nbsp;Your files never leave this device. Unsupported formats are not uploaded or altered.</p>
+      <div id="progressWrap" class="progress-wrap hidden"><div class="progress-label"><span id="progressText">Preparing file…</span><b id="progressPct">0%</b></div><div class="progress-track"><span id="progressBar"></span></div></div><div id="result" class="result hidden" aria-live="polite"><div class="result-title"><span class="success-mark">✓</span><div><b id="resultTitle">Cleaning complete</b><small id="resultSub">Your cleaned file is ready.</small></div></div><div class="result-stats"><div><small>OUTPUT FILE</small><b id="outName">—</b></div><div><small>OUTPUT SIZE</small><b id="outSize">—</b></div></div><button id="download" class="download-btn">↓ &nbsp; DOWNLOAD CLEAN FILE</button><p class="report" id="report">Image re-encoded without embedded metadata. Check the output before sharing.</p></div>
     </section>
     <footer><span>✳ METAVAULT</span><span>BUILT FOR PRIVACY · BETA</span></footer>
   </main>
