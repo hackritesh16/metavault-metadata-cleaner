@@ -70,7 +70,7 @@ private fun MetaVaultScreen() {
             status = "File selected. Ready to clean."
         }
     }
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/jpeg")) { uri ->
+    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val bytes = readyBytes
         if (uri != null && bytes != null) {
             scope.launch {
