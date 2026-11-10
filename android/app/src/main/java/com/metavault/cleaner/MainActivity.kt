@@ -15,8 +15,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -169,7 +167,7 @@ private fun MetaVaultApp() {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Header(onAbout = { page = Page.ABOUT })
-                    AnimatedContent(targetState = page, label = "page", transitionSpec = { fadeIn() togetherWith fadeOut() }) { current ->
+                    AnimatedContent(targetState = page, label = "page") { current ->
                         when (current) {
                             Page.HOME -> HomePage(
                                 onBrowse = { page = Page.BROWSE }, onClean = { page = Page.CLEANER },
