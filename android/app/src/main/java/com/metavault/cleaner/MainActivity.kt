@@ -1,5 +1,8 @@
 package com.metavault.cleaner
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -56,6 +59,39 @@ private enum class Page(val label: String) {
 }
 
 private data class HistoryEntry(val name: String, val detail: String)
+private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String)
+
+private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia> {
+    val resolver = context.contentResolver
+    val results = mutableListOf<DeviceMedia>()
+    fun read(collection: Uri, category: String, permission: String) {
+        if (Build.VERSION.SDK_INT >= 23 && context.checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) return
+        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
+        runCatching {
+            resolver.query(collection, projection, null, null, MediaStore.MediaColumns.DATE_MODIFIED + " DESC")?.use { cursor ->
+                val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
+                val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val mimeCol = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                while (cursor.moveToNext() && results.size < 500) {
+                    val id = cursor.getLong(idCol)
+                    val name = cursor.getString(nameCol) ?: "Unnamed file"
+                    val mime = if (mimeCol >= 0) cursor.getString(mimeCol) ?: "application/octet-stream" else "application/octet-stream"
+                    results.add(DeviceMedia(android.content.ContentUris.withAppendedId(collection, id), name, mime, category))
+                }
+            }
+        }
+    }
+    if (Build.VERSION.SDK_INT >= 33) {
+        read(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Photo", Manifest.permission.READ_MEDIA_IMAGES)
+        read(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "Video", Manifest.permission.READ_MEDIA_VIDEO)
+        read(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "Audio", Manifest.permission.READ_MEDIA_AUDIO)
+    } else {
+        read(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Photo", Manifest.permission.READ_EXTERNAL_STORAGE)
+        read(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "Video", Manifest.permission.READ_EXTERNAL_STORAGE)
+        read(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "Audio", Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+    return results
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -84,6 +120,31 @@ private fun MetaVaultApp() {
     var readyBytes by remember { mutableStateOf<ByteArray?>(null) }
     var saveName by remember { mutableStateOf("metavault-clean.jpg") }
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
+    var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
+    var libraryStatus by remember { mutableStateOf("Requesting media access…") }
+
+    val mediaPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        if (grants.values.any { it }) {
+            deviceMedia = loadDeviceMedia(context)
+            libraryStatus = "Loaded " + deviceMedia.size + " media files from accessible device storage."
+        } else {
+            libraryStatus = "Media permission was denied. Use Browse files to select items manually."
+        }
+    }
+    LaunchedEffect(Unit) {
+        val requested = if (Build.VERSION.SDK_INT >= 34) arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO,
+            Manifest.permission.READ_MEDIA_AUDIO, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED
+        ) else if (Build.VERSION.SDK_INT >= 33) arrayOf(
+            Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO
+        ) else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        val missing = requested.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isNotEmpty()) mediaPermissionLauncher.launch(missing.toTypedArray())
+        else {
+            deviceMedia = loadDeviceMedia(context)
+            libraryStatus = "Loaded " + deviceMedia.size + " media files from accessible device storage."
+        }
+    }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -182,7 +243,14 @@ private fun MetaVaultApp() {
                                 onBrowse = { page = Page.BROWSE }, onClean = { page = Page.CLEANER },
                                 onCategory = { page = it }, onHistory = { page = Page.HISTORY }
                             )
-                            Page.BROWSE -> BrowsePage(onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) })
+                            Page.BROWSE -> BrowsePage(
+                                onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) },
+                                media = deviceMedia, libraryStatus = libraryStatus,
+                                onOpenMedia = { item ->
+                                    selectedUri = item.uri; fileName = item.name; mime = item.mime
+                                    readyBytes = null; status = "File selected from device library."; page = Page.CLEANER
+                                }
+                            )
                             Page.PHOTOS -> CategoryPage(Page.PHOTOS, "JPG · PNG · WEBP", "Inspect image metadata and create a cleaned image copy.", "Image metadata cleaning is available for JPG, PNG and WEBP.", onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, onCleaner = { page = Page.CLEANER })
                             Page.VIDEOS -> CategoryPage(Page.VIDEOS, "MP4 · MOV · OTHER VIDEO", "Browse video files and review the support status.", "Video metadata cleaning is not implemented yet. Files are never modified.", onPick = { picker.launch(arrayOf("video/*")) }, onCleaner = { page = Page.CLEANER })
                             Page.AUDIO -> CategoryPage(Page.AUDIO, "MP3 · M4A · FLAC · OTHER AUDIO", "Browse music and audio files on your device.", "Audio metadata cleaning is not implemented yet. Files are never modified.", onPick = { picker.launch(arrayOf("audio/*")) }, onCleaner = { page = Page.CLEANER })
@@ -315,6 +383,35 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
         }
         SectionTitle("EXPLORE CATEGORIES", "Choose a file type")
         CategoryGrid(onCategory)
+        GlassCard(accent = Mint) {
+            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text(libraryStatus, color = Muted, fontSize = 11.sp)
+            val grouped = media.groupBy { it.category }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Photo", "Video", "Audio").forEach { category ->
+                    Column(Modifier.weight(1f)) {
+                        Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(category.uppercase(), color = Muted, fontSize = 8.sp)
+                    }
+                }
+            }
+            if (media.isEmpty()) {
+                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 11.sp)
+            } else {
+                media.take(100).forEach { item ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 9.sp, maxLines = 1)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = Mint)
+                    }
+                    HorizontalDivider(color = Color(0x1FFFFFFF))
+                }
+            }
+        }
         GlassCard(accent = Aqua) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = Aqua, modifier = Modifier.size(26.dp))
@@ -335,7 +432,7 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
 }
 
 @Composable
-private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit) {
+private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: List<DeviceMedia>, libraryStatus: String, onOpenMedia: (DeviceMedia) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(15.dp)) {
         PageHeading("File library", "Browse by category and choose files securely.")
         GlassCard {
