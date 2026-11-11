@@ -45,11 +45,11 @@ import java.io.ByteArrayOutputStream
 
 private val Ink = Color(0xFF050A16)
 private val Panel = Color(0xCC101D32)
-private val Mint = Color(0xFF39F5B5)
-private val Aqua = Color(0xFF20C8FF)
+internal val Mint = Color(0xFF39F5B5)
+internal val Aqua = Color(0xFF20C8FF)
 private val Blue = Color(0xFF356BFF)
-private val Violet = Color(0xFF9274FF)
-private val Muted = Color(0xFFA8B8D0)
+internal val Violet = Color(0xFF9274FF)
+internal val Muted = Color(0xFFA8B8D0)
 private val DisplayFont = FontFamily.SansSerif
 
 private enum class Page(val label: String) {
@@ -631,7 +631,7 @@ private fun SectionTitle(eyebrow: String, title: String) {
 }
 
 @Composable
-private fun GlassCard(modifier: Modifier = Modifier, accent: Color = Mint, content: @Composable ColumnScope.() -> Unit) {
+internal fun GlassCard(modifier: Modifier = Modifier, accent: Color = Mint, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxWidth()
             .background(Brush.linearGradient(listOf(Color(0xDD14263D), Color(0xB20B182B), Color(0xCC102B31))), RoundedCornerShape(22.dp))
@@ -656,7 +656,7 @@ private fun GradientButton(label: String, icon: androidx.compose.ui.graphics.vec
 }
 
 @Composable
-private fun StatTile(value: String, label: String, tint: Color, modifier: Modifier = Modifier) {
+internal fun StatTile(value: String, label: String, tint: Color, modifier: Modifier = Modifier) {
     GlassCard(modifier, tint) {
         Text(value, color = tint, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
         Text(label, color = Muted, fontSize = 8.sp, letterSpacing = 0.8.sp, fontWeight = FontWeight.Bold)
