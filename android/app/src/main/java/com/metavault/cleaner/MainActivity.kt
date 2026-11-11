@@ -2,6 +2,7 @@ package com.metavault.cleaner
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.ExifInterface
 import android.provider.MediaStore
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -67,6 +68,7 @@ private val Accent = Color(0xFF3A63E8)
 private val AccentSoft = Color(0xFF8EABFF)
 private val AccentTint = Color(0x333A63E8)
 private val Clean = Color(0xFF3DDC97)
+private val Warn = Color(0xFFFFB86B)
 private val Paper = Color(0xFFF3F5F8)
 private val PaperInk = Color(0xFF0B1018)
 private val PaperMuted = Color(0xFF4B586D)
@@ -104,6 +106,104 @@ private enum class Page(val label: String) {
 
 private data class HistoryEntry(val name: String, val detail: String)
 private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String)
+
+private data class Finding(val label: String, val value: String, val sensitive: Boolean = false)
+private data class Inspection(val findings: List<Finding>, val note: String)
+
+// Matches dotted IPv4 addresses and ignores longer version-like numbers.
+private val IPV4_REGEX = Regex("""(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?!\d|\.\d)""")
+private val TOKEN_SPLIT = Regex("""[\s,;"'<>()\[\]{}=]+""")
+
+// Own IPv6 check on purpose: InetAddress.getByName would fall back to a DNS lookup for non-numeric text.
+private fun isIPv6(s: String): Boolean {
+    if (s.count { it == ':' } < 2 || s.any { !(it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == ':') }) return false
+    val dbl = s.indexOf("::")
+    if (dbl != s.lastIndexOf("::")) return false
+    fun groupsOk(part: String) = part.isEmpty() || part.split(":").all { it.length in 1..4 }
+    return if (dbl >= 0) {
+        val head = s.substring(0, dbl)
+        val tail = s.substring(dbl + 2)
+        val h = if (head.isEmpty()) 0 else head.split(":").size
+        val t = if (tail.isEmpty()) 0 else tail.split(":").size
+        groupsOk(head) && groupsOk(tail) && h + t <= 7
+    } else {
+        val g = s.split(":")
+        g.size == 8 && g.all { it.length in 1..4 }
+    }
+}
+
+private fun hasMediaLocation(context: android.content.Context): Boolean =
+    Build.VERSION.SDK_INT < 29 ||
+        context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+
+private fun openForMetadata(context: android.content.Context, uri: Uri): java.io.InputStream? {
+    val resolver = context.contentResolver
+    if (Build.VERSION.SDK_INT >= 29 && uri.authority == MediaStore.AUTHORITY && hasMediaLocation(context)) {
+        runCatching { resolver.openInputStream(MediaStore.setRequireOriginal(uri)) }.getOrNull()?.let { return it }
+    }
+    return runCatching { resolver.openInputStream(uri) }.getOrNull()
+}
+
+// Reads EXIF on this device only. Nothing is sent anywhere.
+private fun inspectImage(context: android.content.Context, uri: Uri, mime: String): Inspection {
+    if (!mime.startsWith("image/")) return Inspection(emptyList(), "MetaVault can read metadata from images for now.")
+    val exif = runCatching { openForMetadata(context, uri)?.use { ExifInterface(it) } }.getOrNull()
+        ?: return Inspection(emptyList(), "Could not read metadata from this file.")
+    fun attr(tag: String): String {
+        val raw = exif.getAttribute(tag)?.replace("\u0000", "")?.trim().orEmpty()
+        return if (tag == ExifInterface.TAG_USER_COMMENT) raw.removePrefix("ASCII").removePrefix("UNICODE").trim() else raw
+    }
+    val rows = mutableListOf<Finding>()
+    val latLong = FloatArray(2)
+    if (exif.getLatLong(latLong)) {
+        val lat = latLong[0]
+        val lon = latLong[1]
+        rows += Finding(
+            "Location",
+            String.format(java.util.Locale.US, "%.6f\u00b0 %s, %.6f\u00b0 %s", Math.abs(lat), if (lat >= 0) "N" else "S", Math.abs(lon), if (lon >= 0) "E" else "W"),
+            true
+        )
+    }
+    val ips = linkedMapOf<String, String>()
+    listOf(
+        ExifInterface.TAG_IMAGE_DESCRIPTION, ExifInterface.TAG_USER_COMMENT, ExifInterface.TAG_ARTIST,
+        ExifInterface.TAG_COPYRIGHT, ExifInterface.TAG_MAKE, ExifInterface.TAG_MODEL, "CameraOwnerName"
+    ).forEach { tag ->
+        val text = attr(tag)
+        if (text.isNotEmpty()) {
+            IPV4_REGEX.findAll(text).forEach { ips.putIfAbsent(it.value, tag) }
+            text.split(TOKEN_SPLIT).forEach { raw ->
+                val token = raw.trimEnd('.', ',', ';')
+                if (isIPv6(token)) ips.putIfAbsent(token, tag)
+            }
+        }
+    }
+    if (ips.isNotEmpty()) rows += Finding("Possible IP address", ips.entries.joinToString("\n") { it.key + "  (in " + it.value + ")" }, true)
+    val author = attr(ExifInterface.TAG_ARTIST).ifEmpty { attr("CameraOwnerName") }
+    if (author.isNotEmpty()) rows += Finding("Author", author, true)
+    val make = attr(ExifInterface.TAG_MAKE)
+    val model = attr(ExifInterface.TAG_MODEL)
+    val camera = if (model.startsWith(make, ignoreCase = true)) model else listOf(make, model).filter { it.isNotEmpty() }.joinToString(" ")
+    if (camera.isNotEmpty()) rows += Finding("Camera", camera)
+    val taken = attr(ExifInterface.TAG_DATETIME_ORIGINAL).ifEmpty { attr(ExifInterface.TAG_DATETIME) }
+        .replace(Regex("^(\\d{4}):(\\d{2}):(\\d{2})"), "$1-$2-$3")
+    if (taken.isNotEmpty()) rows += Finding("Date taken", taken)
+    val software = attr(ExifInterface.TAG_SOFTWARE)
+    if (software.isNotEmpty()) rows += Finding("Software", software)
+    val copyright = attr(ExifInterface.TAG_COPYRIGHT)
+    if (copyright.isNotEmpty()) rows += Finding("Copyright", copyright)
+    val comment = attr(ExifInterface.TAG_IMAGE_DESCRIPTION).ifEmpty { attr(ExifInterface.TAG_USER_COMMENT) }
+    if (comment.isNotEmpty()) rows += Finding("Comment", comment)
+    val locationMayBeHidden = Build.VERSION.SDK_INT >= 29 && !hasMediaLocation(context) && rows.none { it.label == "Location" }
+    val note = buildString {
+        append(
+            if (rows.isEmpty()) "No location, camera, author or IP data found in what MetaVault can read."
+            else "All of this is removed from your clean copy. Photos don\u2019t normally store an IP address, so MetaVault only flags text that looks like one."
+        )
+        if (locationMayBeHidden) append(" Android hides photo location unless you allow photo location access, so any location may be missing here.")
+    }
+    return Inspection(rows, note)
+}
 
 private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia> {
     val resolver = context.contentResolver
@@ -169,6 +269,15 @@ private fun MetaVaultApp() {
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
     var libraryStatus by remember { mutableStateOf("Requesting media access…") }
+    var inspection by remember { mutableStateOf<Inspection?>(null) }
+    var mediaLocationGranted by remember { mutableStateOf(hasMediaLocation(context)) }
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> mediaLocationGranted = granted }
+    val needsLocationAccess = Build.VERSION.SDK_INT >= 29 && !mediaLocationGranted && inspection?.findings?.none { it.label == "Location" } == true
+    LaunchedEffect(selectedUri, mime, mediaLocationGranted) {
+        inspection = null
+        val uri = selectedUri
+        if (uri != null) inspection = withContext(Dispatchers.IO) { inspectImage(context, uri, mime) }
+    }
 
     val mediaPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.any { it }) {
@@ -304,6 +413,8 @@ private fun MetaVaultApp() {
                                 fileName, mime, selectedUri != null, preserve, { preserve = it },
                                 removeMetadata, { removeMetadata = it }, output, { output = it },
                                 busy, status, readyBytes != null, saveName,
+                                inspection = inspection, showAllowLocation = needsLocationAccess,
+                                onAllowLocation = { locationLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
                                 onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "video/*", "audio/*", "application/pdf")) },
                                 onClean = {
                                     val uri = selectedUri
@@ -558,6 +669,7 @@ private fun CleanerPage(
     fileName: String, mime: String, hasFile: Boolean, preserve: Boolean, onPreserve: (Boolean) -> Unit,
     remove: Boolean, onRemove: (Boolean) -> Unit, output: String, onOutput: (String) -> Unit,
     busy: Boolean, status: String, ready: Boolean, saveName: String,
+    inspection: Inspection?, showAllowLocation: Boolean, onAllowLocation: () -> Unit,
     onPick: () -> Unit, onClean: () -> Unit, onSave: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -585,6 +697,7 @@ private fun CleanerPage(
             }
             PrimaryButton("Choose file", Icons.Default.FolderOpen, onPick)
         }
+        FindingsCard(hasFile, inspection, showAllowLocation, onAllowLocation)
         VaultCard {
             Text("What to remove", color = TextMain, style = MaterialTheme.typography.titleMedium)
             SettingRow("Remove image metadata", "Supported image metadata is stripped", remove, onRemove)
@@ -641,6 +754,46 @@ private fun CleanerPage(
                 Spacer(Modifier.width(10.dp))
                 Text("Supported now: JPG, PNG and WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+@Composable
+private fun FindingsCard(hasFile: Boolean, inspection: Inspection?, showAllowLocation: Boolean, onAllowLocation: () -> Unit) {
+    if (!hasFile) return
+    VaultCard {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Found in this file", color = TextMain, style = MaterialTheme.typography.titleMedium)
+            if (inspection != null) {
+                val sensitive = inspection.findings.count { it.sensitive }
+                Text(
+                    when {
+                        sensitive > 0 -> "$sensitive sensitive " + (if (sensitive == 1) "item" else "items")
+                        inspection.findings.isEmpty() -> "Nothing found"
+                        else -> "No location or author"
+                    },
+                    color = if (sensitive > 0) Warn else Muted, style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+        if (inspection == null) {
+            Text("Reading metadata\u2026", color = Muted, style = MaterialTheme.typography.bodySmall)
+        } else {
+            inspection.findings.forEach { f ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (f.sensitive) {
+                            Icon(Icons.Default.Warning, "Sensitive", tint = Warn, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                        }
+                        Text(f.label, color = if (f.sensitive) Warn else Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(f.value, color = if (f.sensitive) Warn else TextMain, fontFamily = MonoFont, fontSize = 13.sp)
+                }
+                HorizontalDivider(color = Line)
+            }
+            Text(inspection.note, color = Muted, style = MaterialTheme.typography.bodySmall)
+            if (showAllowLocation) SecondaryButton("Allow photo location access", Icons.Default.LocationOn, onAllowLocation)
         }
     }
 }
