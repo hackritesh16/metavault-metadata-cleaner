@@ -82,7 +82,7 @@ internal object ImageContainerMetadata {
             val len = (u(b[p]) shl 8) or u(b[p+1])
             if (len < 2 || p + len > b.size) { out.write(b, markerStart, b.size-markerStart); break }
             val end = p + len
-            val isIcc = marker == 0xE2 && len >= 14 && ascii(b, p+2, 12) == "ICC_PROFILE"
+            val isIcc = marker == 0xE2 && len >= 14 && ascii(b, p+2, 12) == "ICC_PROFILE\u0000"
             val isAdobe = marker == 0xEE
             val keep = marker !in 0xE1..0xEF && marker != 0xFE || isIcc || isAdobe
             if (keep) out.write(b, markerStart, end-markerStart)

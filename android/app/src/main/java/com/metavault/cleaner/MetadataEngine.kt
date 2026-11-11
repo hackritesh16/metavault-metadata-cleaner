@@ -129,9 +129,8 @@ object MetadataEngine {
                 exif.saveAttributes()
             }
             val result = tmp.readBytes()
-            val remaining = (ImageContainerMetadata.inspect(result).size +
-                runCatching { inspectImage(result).size }.getOrDefault(0))
-            val beforeCount = ImageContainerMetadata.inspect(bytes).size + runCatching { inspectImage(bytes).size }.getOrDefault(0)
+            val remaining = runCatching { inspectImage(result).size }.getOrDefault(0)
+            val beforeCount = runCatching { inspectImage(bytes).size }.getOrDefault(0)
             val removed = (beforeCount - remaining).coerceAtLeast(0)
             return CleanResult(result, removed, remaining,
                 "JPEG/PNG/WebP known metadata blocks are stripped and the output is re-scanned. ICC colour profiles are preserved. Unknown/private payloads may remain.")
