@@ -9,7 +9,9 @@
 
 ## Product essentials
 MetaVault is a privacy-first Android metadata cleaner. Current Android implementation is an MVP:
-- JPG, PNG and WEBP image cleaning is implemented by re-encoding; it is not byte-lossless.
+- Android Cleaner has three modes: View (metadata reader for JPG/PNG/WEBP), Edit (JPG/PNG: writes only user-chosen text fields; everything else incl. GPS is removed) and Remove all.
+- JPG and PNG are cleaned/edited losslessly at byte level (`JpegMetadataStripper`, `PngMetadataStripper`, `MetadataProcessor`); pixel equality is verified in unit tests with real images. WEBP and converted output are re-encoded (not byte-lossless) and cannot be edited.
+- After processing, the output is re-scanned and the report shows real SHA-256 before/after, sizes and remaining fields. Compose UI (`MetadataUi.kt`, `MainActivity.kt`) has not been built or run on a device yet.
 - Cleaned images are saved as new files; originals are not overwritten.
 - Video, audio, PDF and Office metadata cleaning are not implemented yet.
 - Android SAF file selection is supported. Full-storage access must remain optional.

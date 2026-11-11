@@ -20,7 +20,11 @@ A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 - Downloadable clean image copy and processing report
 - Original file is never modified
 
-## Native Android app\n\nA Kotlin + Jetpack Compose Android starter is available in the [`android/`](android/) folder. Open that folder in Android Studio; see [`android/README.md`](android/README.md) for setup. The first Android MVP cleans JPG, PNG and WEBP images locally. Video, audio, PDF and Office processing are not implemented yet.\n\n## Run locally
+## Native Android app
+
+A Kotlin + Jetpack Compose Android starter is available in the [`android/`](android/) folder. Open that folder in Android Studio; see [`android/README.md`](android/README.md) for setup. The Android app can view metadata (JPG/PNG/WEBP), edit it and remove it (JPG/PNG losslessly; WEBP re-encoded), with a before/after cleaning report, all on-device. Video, audio, PDF and Office processing are not implemented yet.
+
+## Run locally
 
 Open `index.html` in a modern browser, or serve the folder with any static web server.
 
@@ -31,7 +35,7 @@ The current image path decodes and re-encodes the image using the browser canvas
 The UI includes video, audio, PDF and other-document selectors as roadmap placeholders. Those formats are **not yet processed**. The app clearly tells users this instead of pretending to clean files.
 
 ## Roadmap
-- [ ] Lossless JPEG metadata removal
+- [x] Lossless JPEG metadata removal (Android; web app still re-encodes)
 - [ ] Video metadata removal via safe remuxing (FFmpeg/WebCodecs evaluation)
 - [ ] Audio tag/chunk removal with format-aware validation
 - [ ] PDF metadata sanitization and verification
