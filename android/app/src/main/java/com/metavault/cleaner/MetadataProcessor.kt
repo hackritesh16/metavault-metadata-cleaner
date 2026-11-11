@@ -48,6 +48,9 @@ object MetadataProcessor {
             }
             else -> throw IllegalArgumentException("Lossless cleaning supports JPG and PNG only")
         }
+        if (before.fields.any { it.group.startsWith("Content Credentials") }) {
+            notes += "Removed C2PA Content Credentials (provenance / AI label). Pixels are untouched, so invisible watermarks, if any, are not affected."
+        }
         notes += "Image data copied byte-for-byte; pixels were not re-encoded."
         return report(input, out, mime, true, before.fields.size, notes)
     }
