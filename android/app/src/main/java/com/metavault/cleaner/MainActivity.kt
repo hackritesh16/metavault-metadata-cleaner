@@ -50,6 +50,7 @@ internal val Aqua = Color(0xFF20C8FF)
 private val Blue = Color(0xFF356BFF)
 internal val Violet = Color(0xFF9274FF)
 internal val Muted = Color(0xFFA8B8D0)
+// Shared Compose tokens/components are internal so feature panels in sibling Kotlin files can reuse them.
 private val DisplayFont = FontFamily.SansSerif
 
 private enum class Page(val label: String) {
