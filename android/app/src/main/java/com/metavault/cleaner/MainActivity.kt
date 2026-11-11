@@ -50,7 +50,6 @@ internal val Aqua = Color(0xFF20C8FF)
 private val Blue = Color(0xFF356BFF)
 internal val Violet = Color(0xFF9274FF)
 internal val Muted = Color(0xFFA8B8D0)
-// Shared Compose tokens/components are internal so feature panels in sibling Kotlin files can reuse them.
 private val DisplayFont = FontFamily.SansSerif
 
 private enum class Page(val label: String) {
@@ -117,15 +116,37 @@ private fun MetaVaultApp() {
     var fileName by remember { mutableStateOf("No file selected") }
     var mime by remember { mutableStateOf("image/jpeg") }
     var preserve by remember { mutableStateOf(true) }
-    var removeMetadata by remember { mutableStateOf(true) }
+    var mode by remember { mutableStateOf(Mode.VIEW) }
+    var scan by remember { mutableStateOf<MetadataScan?>(null) }
+    var scanning by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf<CleanReport?>(null) }
+    var customName by remember { mutableStateOf("") }
+    var usePrefix by remember { mutableStateOf(true) }
+    val edits = remember { mutableStateMapOf<String, String>() }
     var output by remember { mutableStateOf("image/jpeg") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Your files stay on this device.") }
     var readyBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var saveName by remember { mutableStateOf("metavault-clean.jpg") }
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
     var libraryStatus by remember { mutableStateOf("Requesting media access…") }
+
+    fun loadSelection(uri: Uri, mimeType: String) {
+        report = null; readyBytes = null; scan = null; edits.clear(); customName = ""; mode = Mode.VIEW
+        if (!mimeType.startsWith("image/")) {
+            scan = MetadataScan("Unsupported", emptyList(), listOf("Only JPG, PNG and WEBP can be inspected in this version."))
+            return
+        }
+        scanning = true
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes() }?.let { MetadataReader.scan(it, mimeType) } }.getOrNull()
+            }
+            scan = result
+            result?.let { sc -> MetadataEdits.keys(sc.format).forEach { k -> sc.valueOf(k)?.let { edits[k] = it } } }
+            scanning = false
+        }
+    }
 
     val mediaPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         if (grants.values.any { it }) {
@@ -160,7 +181,7 @@ private fun MetaVaultApp() {
             }
             mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
             if (fileName == "No file selected") fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
-            readyBytes = null
+            loadSelection(uri, mime)
             status = "File selected. Review it in Cleaner."
             page = Page.CLEANER
         }
@@ -177,7 +198,6 @@ private fun MetaVaultApp() {
                 }.onSuccess {
                     status = "Saved successfully. Original file is untouched."
                     history = listOf(HistoryEntry(fileName, "Clean copy saved")) + history
-                    readyBytes = null
                 }.onFailure { status = "Save failed: ${it.message}" }
             }
         }
@@ -252,7 +272,7 @@ private fun MetaVaultApp() {
                                 media = deviceMedia, libraryStatus = libraryStatus,
                                 onOpenMedia = { item ->
                                     selectedUri = item.uri; fileName = item.name; mime = item.mime
-                                    readyBytes = null; status = "File selected from device library."; page = Page.CLEANER
+                                    loadSelection(item.uri, item.mime); status = "File selected from device library."; page = Page.CLEANER
                                 }
                             )
                             Page.PHOTOS -> CategoryPage(Page.PHOTOS, "JPG · PNG · WEBP", "Inspect image metadata and create a cleaned image copy.", "Image metadata cleaning is available for JPG, PNG and WEBP.", onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, onCleaner = { page = Page.CLEANER })
@@ -262,43 +282,62 @@ private fun MetaVaultApp() {
                             Page.DOCS -> CategoryPage(Page.DOCS, "DOCX · XLSX · PPTX · MORE", "Browse documents using Android's secure file picker.", "Office document cleaning is planned, not yet available.", onPick = { picker.launch(arrayOf("application/*", "text/*")) }, onCleaner = { page = Page.CLEANER })
                             Page.CLEANER -> CleanerPage(
                                 fileName, mime, selectedUri != null, preserve, { preserve = it },
-                                removeMetadata, { removeMetadata = it }, output, { output = it },
-                                busy, status, readyBytes != null, saveName,
+                                output, { output = it }, busy, status, mode,
                                 onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "video/*", "audio/*", "application/pdf")) },
                                 onClean = {
                                     val uri = selectedUri
                                     if (uri == null) { status = "Choose a file first." }
-                                    else if (!removeMetadata) { status = "Enable metadata removal to continue." }
+                                    else if (mode == Mode.VIEW) { status = "Choose Edit or Remove all to create a new copy." }
                                     else if (!mime.startsWith("image/")) { status = "This format is not supported for cleaning yet. Your file is unchanged." }
+                                    else if (mode == Mode.EDIT && !(preserve && MetadataProcessor.isLossless(mime))) { status = "Editing works on JPG/PNG with Keep original format on. Your file is unchanged." }
                                     else {
-                                        busy = true; status = "Cleaning image locally…"; readyBytes = null
+                                        busy = true; status = "Processing locally…"; readyBytes = null; report = null
+                                        val currentMode = mode
+                                        val currentEdits = edits.toMap()
                                         scope.launch {
                                             runCatching {
                                                 withContext(Dispatchers.IO) {
-                                                    val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: error("Could not read this image")
-                                                    val targetMime = if (preserve) mime else output
-                                                    val format = when (targetMime) {
-                                                        "image/png" -> Bitmap.CompressFormat.PNG
-                                                        "image/webp" -> if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-                                                        else -> Bitmap.CompressFormat.JPEG
+                                                    val original = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read this image")
+                                                    if (preserve && MetadataProcessor.isLossless(mime)) {
+                                                        MetadataProcessor.process(original, mime, currentMode, currentEdits)
+                                                    } else {
+                                                        val fieldsBefore = MetadataReader.scan(original, mime).fields.size
+                                                        val bitmap = BitmapFactory.decodeByteArray(original, 0, original.size) ?: error("Could not read this image")
+                                                        val targetMime = if (preserve) mime else output
+                                                        val format = when (targetMime) {
+                                                            "image/png" -> Bitmap.CompressFormat.PNG
+                                                            "image/webp" -> if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
+                                                            else -> Bitmap.CompressFormat.JPEG
+                                                        }
+                                                        val stream = ByteArrayOutputStream()
+                                                        val quality = if (format == Bitmap.CompressFormat.PNG) 100 else 96
+                                                        check(bitmap.compress(format, quality, stream)) { "Image export failed" }
+                                                        bitmap.recycle()
+                                                        MetadataProcessor.report(original, stream.toByteArray(), targetMime, false, fieldsBefore,
+                                                            listOf("Re-encoded copy: metadata removed, but this is not byte-lossless."))
                                                     }
-                                                    val stream = ByteArrayOutputStream()
-                                                    val quality = if (format == Bitmap.CompressFormat.PNG) 100 else 96
-                                                    check(bitmap.compress(format, quality, stream)) { "Image export failed" }
-                                                    bitmap.recycle()
-                                                    stream.toByteArray() to targetMime
                                                 }
-                                            }.onSuccess { (bytes, targetMime) ->
-                                                readyBytes = bytes
-                                                val ext = when (targetMime) { "image/png" -> "png"; "image/webp" -> "webp"; else -> "jpg" }
-                                                saveName = fileName.substringBeforeLast('.', fileName) + ".clean." + ext
-                                                status = "Cleaned copy prepared. Original file is untouched."
-                                            }.onFailure { status = "Could not clean file: ${it.message}" }
+                                            }.onSuccess { r ->
+                                                report = r; readyBytes = r.bytes
+                                                status = "Done. Original file is untouched. Review the report and save."
+                                            }.onFailure { status = "Could not process file: ${it.message}" }
                                             busy = false
                                         }
                                     }
                                 },
-                                onSave = { saver.launch(saveName) }
+                                modeContent = {
+                                    ModeSelector(mode) { mode = it; report = null; readyBytes = null }
+                                    if (mode == Mode.EDIT) MetadataEditor(scan, edits) else MetadataViewer(scan, scanning)
+                                },
+                                resultContent = {
+                                    val r = report
+                                    if (r != null) {
+                                        val outName = MetadataProcessor.outputName(fileName, customName, usePrefix, r.mime)
+                                        ProcessingComplete(r, fileName, outName)
+                                        FilenameCard(customName, { customName = it }, usePrefix, { usePrefix = it }, outName)
+                                        GradientButton("DOWNLOAD IMAGE", Icons.Default.Download) { saver.launch(outName) }
+                                    }
+                                }
                             )
                             Page.HISTORY -> HistoryPage(history)
                             Page.SETTINGS -> SettingsPage(onAbout = { page = Page.ABOUT }, onPermissions = {
@@ -387,35 +426,6 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
         }
         SectionTitle("EXPLORE CATEGORIES", "Choose a file type")
         CategoryGrid(onCategory)
-        GlassCard(accent = Mint) {
-            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
-            Text(libraryStatus, color = Muted, fontSize = 11.sp)
-            val grouped = media.groupBy { it.category }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("Photo", "Video", "Audio").forEach { category ->
-                    Column(Modifier.weight(1f)) {
-                        Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(category.uppercase(), color = Muted, fontSize = 8.sp)
-                    }
-                }
-            }
-            if (media.isEmpty()) {
-                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 11.sp)
-            } else {
-                media.take(100).forEach { item ->
-                    Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
-                        Spacer(Modifier.width(10.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(item.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 9.sp, maxLines = 1)
-                        }
-                        Icon(Icons.Default.ChevronRight, null, tint = Mint)
-                    }
-                    HorizontalDivider(color = Color(0x1FFFFFFF))
-                }
-            }
-        }
         GlassCard(accent = Aqua) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.AutoAwesome, null, tint = Aqua, modifier = Modifier.size(26.dp))
@@ -445,6 +455,35 @@ private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: Li
             GradientButton("BROWSE ALL FILES", Icons.Default.FolderOpen, onPick)
         }
         CategoryGrid(onCategory)
+        GlassCard(accent = Mint) {
+            Text("ON-DEVICE LIBRARY", color = Mint, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+            Text(libraryStatus, color = Muted, fontSize = 11.sp)
+            val grouped = media.groupBy { it.category }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("Photo", "Video", "Audio").forEach { category ->
+                    Column(Modifier.weight(1f)) {
+                        Text((grouped[category]?.size ?: 0).toString(), color = Mint, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(category.uppercase(), color = Muted, fontSize = 8.sp)
+                    }
+                }
+            }
+            if (media.isEmpty()) {
+                Text("No accessible media found yet. Check permission or use Browse All Files.", color = Muted, fontSize = 11.sp)
+            } else {
+                media.take(100).forEach { item ->
+                    Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = Aqua)
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.name, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(item.category + " · " + item.mime, color = Muted, fontSize = 9.sp, maxLines = 1)
+                        }
+                        Icon(Icons.Default.ChevronRight, null, tint = Mint)
+                    }
+                    HorizontalDivider(color = Color(0x1FFFFFFF))
+                }
+            }
+        }
         GlassCard(accent = Aqua) {
             Text("ACCESS & PRIVACY", color = Aqua, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             Text("Only files you select are opened. Full-storage access is optional and is not required for the system picker.", color = Muted, fontSize = 11.sp)
@@ -500,12 +539,12 @@ private fun CategoryPage(page: Page, formats: String, description: String, suppo
 @Composable
 private fun CleanerPage(
     fileName: String, mime: String, hasFile: Boolean, preserve: Boolean, onPreserve: (Boolean) -> Unit,
-    remove: Boolean, onRemove: (Boolean) -> Unit, output: String, onOutput: (String) -> Unit,
-    busy: Boolean, status: String, ready: Boolean, saveName: String,
-    onPick: () -> Unit, onClean: () -> Unit, onSave: () -> Unit
+    output: String, onOutput: (String) -> Unit, busy: Boolean, status: String, mode: Mode,
+    onPick: () -> Unit, onClean: () -> Unit,
+    modeContent: @Composable ColumnScope.() -> Unit, resultContent: @Composable ColumnScope.() -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("Cleaner studio", "Inspect your selection, choose options, then export a fresh copy.")
+        PageHeading("Cleaner studio", "View, edit or remove metadata, then export a fresh copy.")
         GlassCard(accent = Mint) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("SELECTED FILE", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
@@ -523,40 +562,33 @@ private fun CleanerPage(
             }
             GradientButton("CHOOSE FILE", Icons.Default.FolderOpen, onPick)
         }
-        GlassCard {
-            Text("CLEANING OPTIONS", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
-            SettingRow("Remove image metadata", "Supported image metadata is stripped", remove, onRemove)
-            HorizontalDivider(color = Color(0x22FFFFFF))
-            SettingRow("Keep original format", "Best effort; image is re-encoded", preserve, onPreserve)
-            if (!preserve) {
-                Text("OUTPUT FORMAT", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                    listOf("JPG" to "image/jpeg", "PNG" to "image/png", "WEBP" to "image/webp").forEach { (label, value) ->
-                        FilterChip(selected = output == value, onClick = { onOutput(value) }, label = { Text(label) })
+        modeContent()
+        if (mode != Mode.VIEW) {
+            GlassCard {
+                Text("OPTIONS", color = Mint, fontSize = 10.sp, letterSpacing = 1.7.sp, fontWeight = FontWeight.Bold)
+                SettingRow("Keep original format", "JPG/PNG: lossless, pixels untouched. WEBP: re-encoded", preserve, onPreserve)
+                if (!preserve) {
+                    Text("OUTPUT FORMAT (re-encoded, not byte-lossless)", color = Muted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                        listOf("JPG" to "image/jpeg", "PNG" to "image/png", "WEBP" to "image/webp").forEach { (label, value) ->
+                            FilterChip(selected = output == value, onClick = { onOutput(value) }, label = { Text(label) })
+                        }
                     }
                 }
             }
-        }
-        Button(onClick = onClean, enabled = hasFile && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null)
-            Spacer(Modifier.width(9.dp)); Text(if (busy) "PROCESSING LOCALLY…" else "CLEAN SELECTED FILE", fontWeight = FontWeight.Bold)
-        }
-        AnimatedVisibility(ready) {
-            GlassCard(accent = Mint) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Verified, null, tint = Mint, modifier = Modifier.size(28.dp))
-                    Column(Modifier.weight(1f)) { Text("Clean copy ready", fontWeight = FontWeight.Bold); Text(saveName, color = Muted, fontSize = 10.sp) }
-                }
-                GradientButton("SAVE CLEAN COPY", Icons.Default.Download, onSave)
-                Text("Dimensions are retained. Re-encoding may change pixels or file size; this is not byte-for-byte lossless.", color = Muted, fontSize = 10.sp)
+            Button(onClick = onClean, enabled = hasFile && !busy, modifier = Modifier.fillMaxWidth().height(54.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Violet)) {
+                if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null)
+                Spacer(Modifier.width(9.dp))
+                Text(if (busy) "PROCESSING LOCALLY…" else if (mode == Mode.EDIT) "APPLY EDITS TO A NEW COPY" else "REMOVE ALL METADATA", fontWeight = FontWeight.Bold)
             }
         }
-        GlassCard { Text(status, color = if (ready) Mint else Muted, fontSize = 12.sp) }
+        resultContent()
+        GlassCard { Text(status, color = Muted, fontSize = 12.sp) }
         GlassCard(accent = Aqua) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, null, tint = Aqua, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text("Supported now: JPG · PNG · WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, fontSize = 10.sp)
+                Text("View: JPG · PNG · WEBP. Edit and lossless removal: JPG · PNG. WEBP is re-encoded when cleaned. Video, audio and PDF are not available yet.", color = Muted, fontSize = 10.sp)
             }
         }
     }
@@ -603,7 +635,7 @@ private fun AboutPage() {
         GlassCard(accent = Mint) {
             Text("M", color = Mint, fontSize = 54.sp, fontWeight = FontWeight.Black)
             Text("MetaVault", fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
-            Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos can contain hidden details such as capture time, device information and location tags. When supported, MetaVault re-encodes the image to create a cleaner copy before you share it. Processing happens locally on your device, and your original file is never overwritten.", color = Muted, fontSize = 12.sp)
+            Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos can contain hidden details such as capture time, device information and location tags. You can view, edit or remove that metadata. JPG and PNG are cleaned without re-encoding the picture; WEBP is re-encoded. Processing happens locally on your device, and your original file is never overwritten.", color = Muted, fontSize = 12.sp)
         }
         GlassCard {
             InfoLine("01", "Local by design", "The current cleaning flow runs on your device.")
@@ -643,7 +675,7 @@ internal fun GlassCard(modifier: Modifier = Modifier, accent: Color = Mint, cont
 }
 
 @Composable
-private fun GradientButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+internal fun GradientButton(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
     Button(
         onClick = onClick, modifier = Modifier.fillMaxWidth().height(50.dp),
         shape = RoundedCornerShape(15.dp),
