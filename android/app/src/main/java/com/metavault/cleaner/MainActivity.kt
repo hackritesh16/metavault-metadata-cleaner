@@ -3,12 +3,9 @@ package com.metavault.cleaner
 import android.Manifest
 import android.content.pm.PackageManager
 import android.provider.MediaStore
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
-import android.os.Environment
 import android.content.Intent
 import android.provider.Settings
 import android.net.Uri as AndroidUri
@@ -17,7 +14,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -53,7 +49,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 
 // Palette shared with the web app (see style.css).
 private val Bg = Color(0xFF0A0F1A)
@@ -104,6 +99,47 @@ private enum class Page(val label: String) {
 
 private data class HistoryEntry(val name: String, val detail: String)
 private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String)
+
+/** Metadata shown for the selected file. [loading] is true while the engine reads the file. */
+private data class Inspection(val fields: List<MetaField> = emptyList(), val loading: Boolean = false, val error: String? = null)
+
+/** A cleaned copy waiting to be saved. The original file is never written. */
+private class CleanOutput(val saveName: String, val result: CleanResult)
+
+private val OFFICE_MIMES = arrayOf(
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+)
+private val CLEANER_MIMES = arrayOf("image/jpeg", "image/png", "image/webp", "audio/*") + OFFICE_MIMES
+
+private fun displayName(context: android.content.Context, uri: Uri): String? =
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull()
+
+/** "photo.jpg" becomes "photo.clean.jpg", so the copy never replaces the original name. */
+private fun cleanName(name: String): String {
+    val base = name.substringBeforeLast('.', name)
+    val ext = name.substringAfterLast('.', "")
+    return if (ext.isEmpty()) "$base.clean" else "$base.clean.$ext"
+}
+
+private fun coverageText(kind: MetadataEngine.Kind): String = when (kind) {
+    MetadataEngine.Kind.IMAGE -> "Removes camera, date, location, author, software and maker-note fields. Orientation is kept and pixels are not re-encoded. XMP and IPTC blocks are not covered yet."
+    MetadataEngine.Kind.MP3 -> "Removes ID3 tags, including title, artist, album and cover art. Audio data is not changed. APE tags are not covered yet."
+    MetadataEngine.Kind.OFFICE -> "Clears author, last-modified-by, title, subject, keywords, description, company and manager. Dates and revision history are kept. Comments, tracked-change authors and custom properties are not cleared yet."
+    MetadataEngine.Kind.OTHER_MEDIA -> "View only. Cleaning is not available for this format yet, so your file is not changed."
+    MetadataEngine.Kind.UNSUPPORTED -> "This file type is not supported yet. Your file is not changed."
+}
+
+/** Reports only what the engine actually did. */
+private fun summaryText(result: CleanResult): String {
+    val removed = if (result.removed == 0) "Nothing to remove. No supported metadata was found." else "Removed ${result.removed} item(s)."
+    return if (result.remaining > 0) "$removed ${result.remaining} known field(s) still present." else removed
+}
 
 private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia> {
     val resolver = context.contentResolver
@@ -158,14 +194,11 @@ private fun MetaVaultApp() {
     var page by remember { mutableStateOf(Page.HOME) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("No file selected") }
-    var mime by remember { mutableStateOf("image/jpeg") }
-    var preserve by remember { mutableStateOf(true) }
-    var removeMetadata by remember { mutableStateOf(true) }
-    var output by remember { mutableStateOf("image/jpeg") }
+    var mime by remember { mutableStateOf("application/octet-stream") }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Your files stay on this device.") }
-    var readyBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var saveName by remember { mutableStateOf("metavault-clean.jpg") }
+    var inspection by remember { mutableStateOf(Inspection(loading = true)) }
+    var cleanOutput by remember { mutableStateOf<CleanOutput?>(null) }
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
     var libraryStatus by remember { mutableStateOf("Requesting media access…") }
@@ -193,34 +226,43 @@ private fun MetaVaultApp() {
         }
     }
 
+    // Read the metadata of whichever file is selected. Runs off the main thread.
+    LaunchedEffect(selectedUri, fileName, mime) {
+        val uri = selectedUri ?: return@LaunchedEffect
+        cleanOutput = null
+        inspection = Inspection(loading = true)
+        inspection = withContext(Dispatchers.IO) {
+            runCatching { MetadataEngine.inspect(context, uri, fileName, mime) }.fold(
+                onSuccess = { Inspection(fields = it) },
+                onFailure = { Inspection(error = it.message ?: "Could not read this file") }
+            )
+        }
+    }
+
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             selectedUri = uri
-            runCatching {
-                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) fileName = c.getString(0) ?: "Selected file"
-                }
-            }
+            fileName = displayName(context, uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
             mime = context.contentResolver.getType(uri) ?: "application/octet-stream"
-            if (fileName == "No file selected") fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "Selected file"
-            readyBytes = null
+            cleanOutput = null
+            inspection = Inspection(loading = true)
             status = "File selected. Review it in Cleaner."
             page = Page.CLEANER
         }
     }
     val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val bytes = readyBytes
-        if (uri != null && bytes != null) {
+        val output = cleanOutput
+        if (uri != null && output != null) {
             scope.launch {
                 runCatching {
                     withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(output.result.bytes) }
                             ?: error("Could not open destination")
                     }
                 }.onSuccess {
-                    status = "Saved successfully. Original file is untouched."
-                    history = listOf(HistoryEntry(fileName, "Clean copy saved")) + history
-                    readyBytes = null
+                    status = "Saved. Original file is untouched."
+                    history = listOf(HistoryEntry(fileName, "Clean copy saved · " + summaryText(output.result))) + history
+                    cleanOutput = null
                 }.onFailure { status = "Save failed: ${it.message}" }
             }
         }
@@ -292,53 +334,51 @@ private fun MetaVaultApp() {
                                 media = deviceMedia, libraryStatus = libraryStatus,
                                 onOpenMedia = { item ->
                                     selectedUri = item.uri; fileName = item.name; mime = item.mime
-                                    readyBytes = null; status = "File selected from device library."; page = Page.CLEANER
+                                    cleanOutput = null; inspection = Inspection(loading = true)
+                                    status = "File selected from device library."; page = Page.CLEANER
                                 }
                             )
-                            Page.PHOTOS -> CategoryPage(Page.PHOTOS, "JPG, PNG and WEBP", "Inspect image metadata and create a cleaned image copy.", "Image metadata cleaning is available for JPG, PNG and WEBP.", onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, onCleaner = { page = Page.CLEANER })
+                            Page.PHOTOS -> CategoryPage(Page.PHOTOS, "JPG, PNG and WEBP", "Inspect image metadata and create a cleaned image copy.", "Image metadata cleaning is available for JPG, PNG and WEBP. Pixels are not re-encoded.", onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }, onCleaner = { page = Page.CLEANER })
                             Page.VIDEOS -> CategoryPage(Page.VIDEOS, "MP4, MOV and other video", "Browse video files and review the support status.", "Video metadata cleaning is not implemented yet. Files are never modified.", onPick = { picker.launch(arrayOf("video/*")) }, onCleaner = { page = Page.CLEANER })
-                            Page.AUDIO -> CategoryPage(Page.AUDIO, "MP3, M4A, FLAC and other audio", "Browse music and audio files on your device.", "Audio metadata cleaning is not implemented yet. Files are never modified.", onPick = { picker.launch(arrayOf("audio/*")) }, onCleaner = { page = Page.CLEANER })
+                            Page.AUDIO -> CategoryPage(Page.AUDIO, "MP3 and other audio", "Browse music and audio files on your device.", "MP3 ID3 tags can be removed. Other audio is view-only for now. Originals are never changed.", onPick = { picker.launch(arrayOf("audio/*")) }, onCleaner = { page = Page.CLEANER })
                             Page.PDFS -> CategoryPage(Page.PDFS, "PDF documents", "Choose PDFs to review future metadata-cleaning support.", "PDF metadata cleaning is not implemented yet. No PDF will be altered.", onPick = { picker.launch(arrayOf("application/pdf")) }, onCleaner = { page = Page.CLEANER })
-                            Page.DOCS -> CategoryPage(Page.DOCS, "DOCX, XLSX, PPTX and more", "Browse documents using Android's secure file picker.", "Office document cleaning is planned, not yet available.", onPick = { picker.launch(arrayOf("application/*", "text/*")) }, onCleaner = { page = Page.CLEANER })
+                            Page.DOCS -> CategoryPage(Page.DOCS, "DOCX, XLSX and PPTX", "Browse Office documents using Android's secure file picker.", "Author, company, title and similar document properties can be cleared. Originals are never changed.", onPick = { picker.launch(OFFICE_MIMES) }, onCleaner = { page = Page.CLEANER })
                             Page.CLEANER -> CleanerPage(
-                                fileName, mime, selectedUri != null, preserve, { preserve = it },
-                                removeMetadata, { removeMetadata = it }, output, { output = it },
-                                busy, status, readyBytes != null, saveName,
-                                onPick = { picker.launch(arrayOf("image/jpeg", "image/png", "image/webp", "video/*", "audio/*", "application/pdf")) },
+                                fileName = fileName,
+                                mime = mime,
+                                kind = if (selectedUri != null) MetadataEngine.kindOf(fileName, mime) else null,
+                                inspection = inspection,
+                                busy = busy,
+                                status = status,
+                                output = cleanOutput,
+                                onPick = { picker.launch(CLEANER_MIMES) },
                                 onClean = {
                                     val uri = selectedUri
-                                    if (uri == null) { status = "Choose a file first." }
-                                    else if (!removeMetadata) { status = "Enable metadata removal to continue." }
-                                    else if (!mime.startsWith("image/")) { status = "This format is not supported for cleaning yet. Your file is unchanged." }
-                                    else {
-                                        busy = true; status = "Cleaning image locally…"; readyBytes = null
+                                    val kind = MetadataEngine.kindOf(fileName, mime)
+                                    if (uri == null) {
+                                        status = "Choose a file first."
+                                    } else if (kind != MetadataEngine.Kind.IMAGE && kind != MetadataEngine.Kind.MP3 && kind != MetadataEngine.Kind.OFFICE) {
+                                        status = "Cleaning is not available for this file type yet. Your file is unchanged."
+                                    } else {
+                                        busy = true
+                                        status = "Cleaning locally…"
+                                        cleanOutput = null
                                         scope.launch {
                                             runCatching {
-                                                withContext(Dispatchers.IO) {
-                                                    val bitmap = context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) } ?: error("Could not read this image")
-                                                    val targetMime = if (preserve) mime else output
-                                                    val format = when (targetMime) {
-                                                        "image/png" -> Bitmap.CompressFormat.PNG
-                                                        "image/webp" -> if (Build.VERSION.SDK_INT >= 30) Bitmap.CompressFormat.WEBP_LOSSY else Bitmap.CompressFormat.WEBP
-                                                        else -> Bitmap.CompressFormat.JPEG
-                                                    }
-                                                    val stream = ByteArrayOutputStream()
-                                                    val quality = if (format == Bitmap.CompressFormat.PNG) 100 else 96
-                                                    check(bitmap.compress(format, quality, stream)) { "Image export failed" }
-                                                    bitmap.recycle()
-                                                    stream.toByteArray() to targetMime
+                                                withContext(Dispatchers.IO) { MetadataEngine.clean(context, uri, fileName, mime) }
+                                            }.onSuccess { result ->
+                                                if (result == null) {
+                                                    status = "Cleaning is not available for this file type yet. Your file is unchanged."
+                                                } else {
+                                                    cleanOutput = CleanOutput(cleanName(fileName), result)
+                                                    status = "Clean copy ready. Original file is untouched."
                                                 }
-                                            }.onSuccess { (bytes, targetMime) ->
-                                                readyBytes = bytes
-                                                val ext = when (targetMime) { "image/png" -> "png"; "image/webp" -> "webp"; else -> "jpg" }
-                                                saveName = fileName.substringBeforeLast('.', fileName) + ".clean." + ext
-                                                status = "Cleaned copy prepared. Original file is untouched."
                                             }.onFailure { status = "Could not clean file: ${it.message}" }
                                             busy = false
                                         }
                                     }
                                 },
-                                onSave = { saver.launch(saveName) }
+                                onSave = { cleanOutput?.let { saver.launch(it.saveName) } }
                             )
                             Page.HISTORY -> HistoryPage(history)
                             Page.SETTINGS -> SettingsPage(onAbout = { page = Page.ABOUT }, onPermissions = {
@@ -522,10 +562,16 @@ private fun CategoryGrid(onCategory: (Page) -> Unit) {
         items.chunked(2).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { (target, icon) ->
+                    val label = when (target) {
+                        Page.PHOTOS, Page.DOCS -> "Cleaning available"
+                        Page.AUDIO -> "MP3 cleaning available"
+                        else -> "Cleaning coming soon"
+                    }
+                    val available = target != Page.VIDEOS && target != Page.PDFS
                     VaultCard(Modifier.weight(1f).clickable { onCategory(target) }) {
                         Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
-                        Text(if (target == Page.PHOTOS) "Cleaning available" else "Cleaning coming soon", color = if (target == Page.PHOTOS) Clean else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(label, color = if (available) Clean else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (rowItems.size == 1) Spacer(Modifier.weight(1f))
@@ -555,17 +601,24 @@ private fun CategoryPage(page: Page, formats: String, description: String, suppo
 
 @Composable
 private fun CleanerPage(
-    fileName: String, mime: String, hasFile: Boolean, preserve: Boolean, onPreserve: (Boolean) -> Unit,
-    remove: Boolean, onRemove: (Boolean) -> Unit, output: String, onOutput: (String) -> Unit,
-    busy: Boolean, status: String, ready: Boolean, saveName: String,
-    onPick: () -> Unit, onClean: () -> Unit, onSave: () -> Unit
+    fileName: String,
+    mime: String,
+    kind: MetadataEngine.Kind?,
+    inspection: Inspection,
+    busy: Boolean,
+    status: String,
+    output: CleanOutput?,
+    onPick: () -> Unit,
+    onClean: () -> Unit,
+    onSave: () -> Unit
 ) {
+    val cleanable = kind == MetadataEngine.Kind.IMAGE || kind == MetadataEngine.Kind.MP3 || kind == MetadataEngine.Kind.OFFICE
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("Cleaner", "Choose a file, pick your options, then save a clean copy.")
+        PageHeading("Cleaner", "Pick a file, review what it contains, then save a clean copy.")
         VaultCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Selected file", color = TextMain, style = MaterialTheme.typography.titleMedium)
-                if (hasFile) {
+                if (kind != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Check, null, tint = Clean, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -579,31 +632,24 @@ private fun CleanerPage(
                 Icon(Icons.Default.InsertDriveFile, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(if (hasFile) fileName else "No file selected", color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Text(if (hasFile) mime else "Choose a file to get started", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Text(if (kind != null) fileName else "No file selected", color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(if (kind != null) mime else "Choose a file to get started", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
             PrimaryButton("Choose file", Icons.Default.FolderOpen, onPick)
         }
-        VaultCard {
-            Text("What to remove", color = TextMain, style = MaterialTheme.typography.titleMedium)
-            SettingRow("Remove image metadata", "Supported image metadata is stripped", remove, onRemove)
-            HorizontalDivider(color = Line)
-            SettingRow("Keep original format", "Best effort; image is re-encoded", preserve, onPreserve)
-            if (!preserve) {
-                Text("Output format", color = Muted, style = MaterialTheme.typography.bodySmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("JPG" to "image/jpeg", "PNG" to "image/png", "WEBP" to "image/webp").forEach { (label, value) ->
-                        FilterChip(
-                            selected = output == value, onClick = { onOutput(value) }, label = { Text(label) },
-                            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = AccentTint, selectedLabelColor = TextMain)
-                        )
-                    }
-                }
+        if (kind != null) {
+            VaultCard {
+                Text("Metadata found", color = TextMain, style = MaterialTheme.typography.titleMedium)
+                MetadataSection(kind, inspection)
+            }
+            VaultCard {
+                Text("What gets removed", color = TextMain, style = MaterialTheme.typography.titleMedium)
+                Text(coverageText(kind), color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
         Button(
-            onClick = onClean, enabled = hasFile && !busy,
+            onClick = onClean, enabled = kind != null && cleanable && !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Accent, contentColor = Color.White,
@@ -614,34 +660,65 @@ private fun CleanerPage(
             Spacer(Modifier.width(9.dp))
             Text(if (busy) "Cleaning…" else "Clean file", fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
-        AnimatedVisibility(ready) {
-            Column(
-                Modifier.fillMaxWidth()
-                    .background(Clean.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
-                    .border(1.dp, Clean.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Verified, null, tint = Clean, modifier = Modifier.size(28.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Clean copy ready", color = TextMain, style = MaterialTheme.typography.titleMedium)
-                        Text(saveName, color = Muted, fontFamily = MonoFont, fontSize = 12.sp)
-                    }
-                }
-                PrimaryButton("Save clean copy", Icons.Default.Download, onSave, container = Clean, content = Color(0xFF04210F))
-                Text("Dimensions are retained. Re-encoding may change pixels or file size; this is not byte-for-byte lossless.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
+        if (output != null) {
+            CleanReadyCard(output, onSave)
         }
-        VaultCard { Text(status, color = if (ready) Clean else Muted, style = MaterialTheme.typography.bodySmall) }
+        VaultCard { Text(status, color = if (output != null) Clean else Muted, style = MaterialTheme.typography.bodySmall) }
         VaultCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Info, null, tint = AccentSoft, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("Supported now: JPG, PNG and WEBP. Video, audio and PDF cleaning are not available yet.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "Supported now: JPG, PNG and WEBP photos, MP3 ID3 tags, and DOCX, XLSX and PPTX document properties. Video, other audio and PDF cleaning are not available yet.",
+                    color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun MetadataSection(kind: MetadataEngine.Kind, inspection: Inspection) {
+    when {
+        inspection.loading -> Text("Reading metadata on this device…", color = Muted, style = MaterialTheme.typography.bodySmall)
+        inspection.error != null -> Text("Could not read this file: " + inspection.error, color = Muted, style = MaterialTheme.typography.bodySmall)
+        kind == MetadataEngine.Kind.UNSUPPORTED -> Text("Metadata view is not available for this file type yet.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        inspection.fields.isEmpty() -> Text("No supported metadata was found in this file.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            inspection.fields.forEach { field ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                    Text(field.key, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(112.dp))
+                    Text(
+                        field.value, color = TextMain, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CleanReadyCard(output: CleanOutput, onSave: () -> Unit) {
+    val result = output.result
+    Column(
+        Modifier.fillMaxWidth()
+            .background(Clean.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
+            .border(1.dp, Clean.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Verified, null, tint = Clean, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Clean copy ready", color = TextMain, style = MaterialTheme.typography.titleMedium)
+                Text(output.saveName, color = Muted, fontFamily = MonoFont, fontSize = 12.sp)
+            }
+        }
+        Text(summaryText(result), color = TextMain, style = MaterialTheme.typography.bodySmall)
+        Text(result.note, color = Muted, style = MaterialTheme.typography.bodySmall)
+        PrimaryButton("Save clean copy", Icons.Default.Download, onSave, container = Clean, content = Color(0xFF04210F))
     }
 }
 
@@ -677,7 +754,7 @@ private fun SettingsPage(onAbout: () -> Unit, onPermissions: () -> Unit, status:
         VaultCard {
             Text("Current session", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text(status, color = Muted, style = MaterialTheme.typography.bodySmall)
-            Text("No cloud upload or account is required for the current image-cleaning workflow.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text("No cloud upload or account is required for cleaning.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -689,12 +766,12 @@ private fun AboutPage() {
         VaultCard {
             BrandMark(48.dp)
             Text("MetaVault", color = TextMain, style = MaterialTheme.typography.headlineMedium)
-            Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos can contain hidden details such as capture time, device information and location tags. When supported, MetaVault re-encodes the image to create a cleaner copy before you share it. Processing happens locally on your device, and your original file is never overwritten.", color = Muted, style = MaterialTheme.typography.bodyMedium)
+            Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos, audio and documents can carry details such as capture time, device, location or author. MetaVault removes the supported metadata and saves a new copy. Processing happens on your device, and your original file is never overwritten.", color = Muted, style = MaterialTheme.typography.bodyMedium)
         }
         VaultCard {
-            InfoBullet("Local by design", "The current cleaning flow runs on your device.")
-            InfoBullet("Originals stay safe", "Cleaned images are saved as a new file.")
-            InfoBullet("Honest support", "Current support: JPG, PNG and WEBP image cleaning. Video, audio, PDF and Office document cleaning are planned and are not active in this build.")
+            InfoBullet("Local by design", "Cleaning runs on your device.")
+            InfoBullet("Originals stay safe", "Cleaned files are saved as a new copy.")
+            InfoBullet("Honest support", "JPG, PNG and WEBP photos, MP3 ID3 tags, and DOCX, XLSX and PPTX document properties can be cleaned. Video, other audio and PDF cleaning are planned and are not active in this build.")
         }
         Text("Android beta. Features are being developed incrementally.", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
@@ -780,23 +857,5 @@ private fun SettingsAction(title: String, detail: String, icon: ImageVector, onC
             Text(detail, color = Muted, style = MaterialTheme.typography.bodySmall)
         }
         Icon(Icons.Default.ChevronRight, null, tint = Muted)
-    }
-}
-
-@Composable
-private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChecked: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, color = TextMain, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
-        Switch(
-            checked = checked, onCheckedChange = onChecked,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White, checkedTrackColor = Accent,
-                uncheckedThumbColor = Color(0xFFDCE4F8), uncheckedTrackColor = Color(0xFF3A4560),
-                uncheckedBorderColor = Color.Transparent
-            )
-        )
     }
 }
