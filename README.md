@@ -15,6 +15,7 @@ A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 - File-type selector for images, video, audio, PDF and other documents
 - Drag-and-drop and local file picker
 - Image preview, file details and processing progress
+- "Found in this file" panel lists GPS location, camera, date taken, software, author and IP-like text before you clean. It is read on the device (web uses the bundled [exifr](https://github.com/MikeKovarik/exifr) library, MIT). Photos do not normally store an IP address, so only text that looks like one is flagged
 - Preserve-format / best-effort quality preference
 - Optional PNG, JPG or WEBP output conversion
 - Downloadable clean image copy and processing report
