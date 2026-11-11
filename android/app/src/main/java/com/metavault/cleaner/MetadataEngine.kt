@@ -19,9 +19,10 @@ class CleanResult(val bytes: ByteArray, val removed: Int, val remaining: Int, va
 
 /**
  * On-device metadata engine. Everything here is local; nothing is uploaded.
- * Supported: JPG/PNG/WEBP (EXIF via ExifInterface, no re-encoding), MP3 (ID3v2/ID3v1), DOCX/XLSX/PPTX (docProps).
+ * Supported: JPG (EXIF via ExifInterface plus XMP/IPTC/comment removal, no re-encoding), PNG/WEBP (EXIF only),
+ * MP3 (ID3v2/ID3v1), DOCX/XLSX/PPTX (docProps).
  * View-only: other audio/video via MediaMetadataRetriever.
- * Not implemented: PDF, video/audio cleaning other than MP3, XMP/IPTC blocks inside images.
+ * Not implemented: PDF, video/audio cleaning other than MP3, XMP/text chunks inside PNG/WebP.
  */
 object MetadataEngine {
     const val MAX_BYTES = 64L * 1024 * 1024
@@ -91,6 +92,11 @@ object MetadataEngine {
             exif.getAttribute(tag)?.takeIf { it.isNotBlank() }?.let { out += MetaField(label, it) }
         }
         exif.latLong?.let { out += MetaField("GPS position", String.format(Locale.US, "%.6f, %.6f", it[0], it[1])) }
+        // JPEG-only blocks that ExifInterface does not expose. Listed only when actually found in the file.
+        if (JpegSegmentStripper.looksLikeJpeg(bytes)) {
+            runCatching { JpegSegmentStripper.scan(bytes) }.getOrNull()
+                ?.forEach { out += MetaField(it.label, it.summary) }
+        }
         return out
     }
 
@@ -112,14 +118,31 @@ object MetadataEngine {
         }
     }
 
-    private fun cleanImage(context: Context, bytes: ByteArray): CleanResult =
-        withExifFile(context, bytes) { exif, _ ->
+    private fun cleanImage(context: Context, bytes: ByteArray): CleanResult {
+        val exifPass = withExifFile(context, bytes) { exif, _ ->
             var removed = 0
             REMOVE_TAGS.forEach { tag ->
                 if (exif.getAttribute(tag) != null) { exif.setAttribute(tag, null); removed++ }
             }
             removed
         }
+        // PNG/WebP: only the EXIF pass applies (XMP/text chunks are not covered yet).
+        if (!JpegSegmentStripper.looksLikeJpeg(exifPass.bytes)) return exifPass
+        return try {
+            val stripped = JpegSegmentStripper.strip(exifPass.bytes)
+            val left = JpegSegmentStripper.scan(stripped.bytes).size // re-check the written output
+            var note = "Pixels are not re-encoded. Removed XMP, IPTC/Photoshop blocks, comments and other embedded app blocks."
+            if (stripped.trailingBytes > 0) {
+                note += " ${stripped.trailingBytes} bytes stored after the image end (for example a motion-photo video) were kept."
+            }
+            CleanResult(stripped.bytes, exifPass.removed + stripped.removed.size, exifPass.remaining + left, note)
+        } catch (e: IllegalArgumentException) {
+            CleanResult(
+                exifPass.bytes, exifPass.removed, exifPass.remaining,
+                "EXIF tags were cleared, but XMP/IPTC could not be checked because the JPEG structure is unusual (${e.message})."
+            )
+        }
+    }
 
     /** Edit selected tags; a null or blank value removes that tag. Keys are ExifInterface tag names. */
     fun editImage(context: Context, uri: Uri, edits: Map<String, String?>): CleanResult =
