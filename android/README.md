@@ -11,17 +11,25 @@ Native Android starter built with Kotlin and Jetpack Compose.
 
 ## Current Android MVP
 - Native Compose multi-page UI with Home, Browse, Photos, Videos, Audio, PDF, Documents, Cleaner, History, Settings and About screens
-- Premium dark neon-gradient and glass-card styling with consistent typography
-- Android Storage Access Framework file picker and save dialog
-- Local JPG, PNG and WEBP decode/re-encode to strip embedded image metadata
-- Preserve-format preference and output conversion controls
-- Original file is never overwritten and files are not uploaded
+- Premium dark styling with bundled fonts
+- Android Storage Access Framework file picker, plus an on-device media library when permission is granted
+- Metadata inspection of the selected file before anything is cleaned
+- Local cleaning without re-encoding pixels or audio:
+  - JPG, PNG and WEBP: EXIF fields such as camera, date, GPS, author and software
+  - MP3: ID3v2 and ID3v1 tags
+  - DOCX, XLSX and PPTX: author, last-modified-by, title, company, manager and similar document properties
+- Cleaned output is written as a new file through the save dialog; the original file is never overwritten
+- Files are never uploaded
 
 ## Current navigation
 The app has dedicated screens for Home, Browse, Photos, Videos, Audio, PDF files, Documents, Cleaner, History, Settings and About. The five primary destinations are available from bottom navigation; file-type pages open from Browse/Home.
 
 ## Limitations
-The preserve-quality option is best-effort, not mathematically lossless. Image dimensions are retained; re-encoding may alter pixels/file size. The current Android app does not yet process video, audio, PDF or Office documents. Those file types are selectable for future support but are not cleaned by this MVP.
+- Image cleaning does not cover XMP or IPTC blocks yet.
+- MP3 cleaning does not cover APE tags yet.
+- Office cleaning does not clear comments, tracked-change authors or custom document properties, and it keeps created/modified dates and revision history.
+- Video and audio other than MP3 can be inspected but not cleaned. PDFs are not inspected or cleaned yet.
+- The cleaning engine is in `app/src/main/java/com/metavault/cleaner/MetadataEngine.kt`, and its unit tests are in `app/src/test`. Each cleaning result reports what was actually removed.
 
 ## Build
 Android Studio / Gradle with JDK 17. Compile SDK 35, min SDK 26.
