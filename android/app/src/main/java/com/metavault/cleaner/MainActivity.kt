@@ -135,7 +135,7 @@ private fun supportShort(page: Page): Pair<String, Boolean> = when (page) {
     Page.PHOTOS -> "View · edit · clean" to true
     Page.VIDEOS -> "View only" to false
     Page.AUDIO -> "MP3 clean · others view only" to true
-    Page.PDFS -> "Not supported yet" to false
+    Page.PDFS -> "View · clean (experimental)" to true
     else -> "DOCX · XLSX · PPTX clean" to true
 }
 
@@ -957,6 +957,9 @@ private fun MetadataSection(
         if (kind == MetadataEngine.Kind.IMAGE && locationMayBeHidden) {
             Text("Android may hide GPS location here until media-location access is allowed for MetaVault.", color = Warn, style = MaterialTheme.typography.bodySmall)
         }
+        if (kind == MetadataEngine.Kind.PDF) {
+            Text("PDF support is experimental. Check the result before sharing the copy.", color = Warn, style = MaterialTheme.typography.bodySmall)
+        }
     }
     if (kind == MetadataEngine.Kind.IMAGE && fields != null && inspectError == null) {
         VaultCard {
@@ -988,7 +991,7 @@ private fun CleanerPage(
             VaultCard {
                 Icon(Icons.Default.AutoAwesome, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
                 Text("No file selected", color = TextMain, style = MaterialTheme.typography.titleMedium)
-                Text("Pick a photo, MP3 or Office file from Browse to get started.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Pick a photo, MP3, PDF or Office file from Browse to get started.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 PrimaryButton("Choose a file", Icons.Default.FolderOpen, onChangeFile)
             }
             return@Column
@@ -1144,8 +1147,8 @@ private fun AboutPage() {
         }
         VaultCard {
             InfoBullet("Originals stay safe", "Results are saved as a new file. Overwriting needs your confirmation and keeps a restorable backup.")
-            InfoBullet("What can be cleaned", "JPG, PNG and WEBP images, MP3 audio, and DOCX, XLSX and PPTX documents.")
-            InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. XMP and IPTC blocks inside images are not covered yet.")
+            InfoBullet("What can be cleaned", "JPG, PNG and WEBP images, MP3 audio, DOCX, XLSX and PPTX documents, and PDF (experimental).")
+            InfoBullet("What cannot yet", "Video and other audio formats can be viewed but are not cleaned. XMP and IPTC blocks inside images are not covered yet.")
         }
         Text("Android beta. Features are being developed incrementally.", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
