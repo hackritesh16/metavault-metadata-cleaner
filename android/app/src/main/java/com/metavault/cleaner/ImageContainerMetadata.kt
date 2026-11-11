@@ -100,6 +100,14 @@ internal object ImageContainerMetadata {
             val type = ascii(b,p+4,4)
             if (type in setOf("eXIf","tEXt","zTXt","iTXt","tIME","caBX"))
                 out += Finding(if (type == "caBX") "C2PA Content Credentials" else "PNG $type metadata", "PNG chunk $type")
+            if (type == "caBX") {
+                val payload = b.copyOfRange(p + 8, p + 8 + len)
+                val c2paFields = C2paReader.fields(payload)
+                c2paFields.forEach { (key, value) -> out += Finding(key, value) }
+                if (c2paFields.isNotEmpty()) {
+                    out += Finding("C2PA summary", C2paReader.summary(c2paFields, len))
+                }
+            }
             p += 12 + len
             if (type == "IEND") break
         }
