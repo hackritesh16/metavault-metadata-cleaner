@@ -160,7 +160,12 @@ object MetadataEngine {
 
     private fun unescape(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&")
 
-    private fun forEachZipEntry(bytes: ByteArray, block: (String, ByteArray) -> Unit) {
+    /**
+     * Iterates every entry in the ZIP archive, passing the original [ZipEntry] and its raw bytes to [block].
+     * The original entry is provided so that callers can preserve fields such as the compression method,
+     * extra data and comment — omitting these can corrupt ZIP-based formats like DOCX.
+     */
+    private fun forEachZipEntry(bytes: ByteArray, block: (ZipEntry, ByteArray) -> Unit) {
         var total = 0L
         ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
             var e = zin.nextEntry
@@ -168,7 +173,7 @@ object MetadataEngine {
                 val data = zin.readBytes()
                 total += data.size
                 check(total <= MAX_UNZIPPED) { "Archive is too large to process safely" }
-                block(e.name, data)
+                block(e, data)
                 e = zin.nextEntry
             }
         }
@@ -176,8 +181,8 @@ object MetadataEngine {
 
     private fun inspectOffice(bytes: ByteArray): List<MetaField> {
         val out = mutableListOf<MetaField>()
-        forEachZipEntry(bytes) { name, data ->
-            val tags = when (name) {
+        forEachZipEntry(bytes) { entry, data ->
+            val tags = when (entry.name) {
                 CORE -> CORE_TAGS + listOf("dcterms:created", "dcterms:modified")
                 APP -> APP_TAGS + listOf("Application", "AppVersion")
                 else -> return@forEachZipEntry
@@ -195,8 +200,8 @@ object MetadataEngine {
         var removed = 0
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zout ->
-            forEachZipEntry(bytes) { name, data ->
-                val tags = when (name) { CORE -> CORE_TAGS; APP -> APP_TAGS; else -> emptyList() }
+            forEachZipEntry(bytes) { srcEntry, data ->
+                val tags = when (srcEntry.name) { CORE -> CORE_TAGS; APP -> APP_TAGS; else -> emptyList() }
                 var payload = data
                 if (tags.isNotEmpty()) {
                     var xml = String(data, Charsets.UTF_8)
@@ -208,7 +213,20 @@ object MetadataEngine {
                     }
                     payload = xml.toByteArray(Charsets.UTF_8)
                 }
-                zout.putNextEntry(ZipEntry(name))
+                // Preserve the original entry's compression method (STORED vs DEFLATED).
+                // Creating a fresh ZipEntry(name) loses this, which can corrupt ZIP-based
+                // Office formats that require certain entries (e.g. [Content_Types].xml) to
+                // remain uncompressed.
+                val outEntry = ZipEntry(srcEntry.name).apply {
+                    method = srcEntry.method
+                    // For STORED entries the size and CRC must be set before writing.
+                    if (srcEntry.method == ZipEntry.STORED) {
+                        size = payload.size.toLong()
+                        compressedSize = payload.size.toLong()
+                        crc = java.util.zip.CRC32().also { it.update(payload) }.value
+                    }
+                }
+                zout.putNextEntry(outEntry)
                 zout.write(payload)
                 zout.closeEntry()
             }
