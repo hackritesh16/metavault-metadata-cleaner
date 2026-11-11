@@ -121,7 +121,9 @@ internal object ImageContainerMetadata {
         while (p + 12 <= b.size) {
             val len = readIntBE(b,p)
             if (len < 0 || len.toLong() + p + 12 > b.size) {
-                out.write(b,p,b.size-p); break
+                out.write(b,p,b.size-p)
+                p = b.size // The malformed tail was already copied; do not append it a second time below.
+                break
             }
             val type = ascii(b,p+4,4)
             val end = p + 12 + len
@@ -143,6 +145,13 @@ internal object ImageContainerMetadata {
             if (len < 0 || len.toLong() + p + 8 > b.size) break
             if (type == "EXIF") out += Finding("WebP EXIF", "RIFF EXIF chunk")
             if (type == "XMP ") out += Finding("WebP XMP", "RIFF XMP chunk")
+            if (type == "C2PA") {
+                out += Finding("C2PA Content Credentials", "RIFF C2PA chunk")
+                val payload = b.copyOfRange(p + 8, p + 8 + len)
+                val c2paFields = C2paReader.fields(payload)
+                c2paFields.forEach { (key, value) -> out += Finding(key, value) }
+                if (c2paFields.isNotEmpty()) out += Finding("C2PA summary", C2paReader.summary(c2paFields, len))
+            }
             p += 8 + len + (len and 1)
         }
         return out
@@ -156,7 +165,12 @@ internal object ImageContainerMetadata {
             if (len < 0 || len.toLong() + p + 8 > b.size) return b
             val type = ascii(b,p,4)
             val end = p + 8 + len + (len and 1)
-            if (type != "EXIF" && type != "XMP ") chunks += b.copyOfRange(p,end)
+            if (type != "EXIF" && type != "XMP " && type != "C2PA") {
+                val chunk = b.copyOfRange(p, end)
+                // VP8X flags advertise optional chunks. Clear EXIF/XMP bits when those chunks are removed.
+                if (type == "VP8X" && len >= 10) chunk[8] = (chunk[8].toInt() and 0xF3).toByte()
+                chunks += chunk
+            }
             p = end
         }
         if (p != b.size) return b
