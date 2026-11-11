@@ -19,6 +19,7 @@
   --accent-soft:#8EABFF;
   --clean:#3DDC97;
   --error:#FFC7B5;
+  --warn:#FFB86B;
   --paper:#F3F5F8;
   --ink:#0B1018;
   --font-display:'Bricolage Grotesque',ui-sans-serif,system-ui,sans-serif;
@@ -113,6 +114,23 @@ noscript .notice{border:1px solid rgba(255,138,101,.4);border-radius:10px;margin
 .remove:hover{background:var(--line);color:var(--text)}
 .remove svg{width:18px;height:18px}
 
+/* Found in this file */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.findings{margin-top:14px;padding:16px 18px 14px;background:var(--surface-2);border:1px solid var(--line);border-radius:14px}
+.findings-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:4px}
+.findings-head h3{margin:0;font:600 1.0625rem/1.2 var(--font-display);letter-spacing:-.01em}
+.badge{font-size:.8125rem;font-weight:600;line-height:1;padding:6px 10px;border-radius:999px;color:var(--muted);border:1px solid var(--line-strong)}
+.badge.alert{color:var(--warn);border-color:rgba(255,184,107,.55);background:rgba(255,184,107,.1)}
+.findings-list{margin:0}
+.f-row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:4px 14px;padding:11px 0;border-top:1px dashed var(--line-strong)}
+.f-row:first-child{border-top:0}
+.f-row dt{font-size:.8125rem;color:var(--muted);padding-top:2px}
+.f-row dd{margin:0;font:400 .875rem/1.5 var(--font-mono);overflow-wrap:anywhere;white-space:pre-line}
+.f-row.sensitive dt{color:var(--warn)}
+.f-row.sensitive dt::before{content:"";display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:var(--warn)}
+.f-row.sensitive dd{color:var(--warn)}
+.findings-note{margin:6px 0 0;font-size:.8125rem;line-height:1.5;color:var(--muted)}
+
 /* Options */
 .options{background:var(--surface-2);border:1px solid var(--line);border-radius:14px}
 .option-row,.format-row{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 20px}
@@ -189,6 +207,7 @@ select:disabled{opacity:.45}
   .dropzone{min-height:152px}
   .option-row,.format-row{padding:14px 16px;gap:16px}
   .result{padding:18px}
+  .f-row{grid-template-columns:minmax(0,1fr)}
   .result-stats{flex-direction:column;gap:14px}
 }
 @media (prefers-reduced-motion:reduce){

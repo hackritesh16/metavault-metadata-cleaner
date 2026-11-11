@@ -71,6 +71,12 @@
           <span class="ready"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>Ready</span>
           <button id="removeFile" class="remove" aria-label="Remove file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
+
+        <section id="findings" class="findings hidden" aria-labelledby="findingsTitle" aria-live="polite">
+          <div class="findings-head"><h3 id="findingsTitle">Found in this file</h3><span id="findingsBadge" class="badge"></span></div>
+          <dl id="findingsList" class="findings-list"></dl>
+          <p id="findingsNote" class="findings-note"></p>
+        </section>
       </div>
 
       <div class="step">
@@ -127,6 +133,7 @@
       <span>Original files are never modified.</span>
     </footer>
   </main>
+  <script src="./vendor/exifr.full.umd.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
