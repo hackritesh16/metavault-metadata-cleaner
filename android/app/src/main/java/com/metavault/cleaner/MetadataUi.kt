@@ -41,7 +41,12 @@ internal fun MetadataViewer(scan: MetadataScan?, scanning: Boolean) {
             scan == null -> Text("Choose a file to see its metadata.", color = Muted, fontSize = 12.sp)
             scan.format == "Unsupported" -> Text(scan.technical.firstOrNull() ?: "This format cannot be read yet.", color = Muted, fontSize = 12.sp)
             else -> {
-                Text("${scan.fields.size} field(s) found in this ${scan.format} file", fontWeight = FontWeight.Bold)
+                Text("${scan.fields.size} metadata field(s) found in this ${scan.format} file", fontWeight = FontWeight.Bold)
+                if (scan.aiNote != null) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, null, tint = Violet, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(scan.aiNote, color = Violet, fontSize = 11.sp)
+                }
                 if (scan.hasGps) Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Warning, null, tint = Amber, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
@@ -51,6 +56,15 @@ internal fun MetadataViewer(scan: MetadataScan?, scanning: Boolean) {
                 scan.fields.take(200).groupBy { it.group }.forEach { (group, list) ->
                     Text(group.uppercase(), color = Aqua, fontSize = 9.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
                     list.forEach { f ->
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(f.name, color = Muted, fontSize = 11.sp, modifier = Modifier.weight(0.4f))
+                            Text(f.value, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(0.6f))
+                        }
+                    }
+                }
+                if (scan.properties.isNotEmpty()) {
+                    Text("FILE PROPERTIES (not removed)", color = Muted, fontSize = 9.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
+                    scan.properties.forEach { f ->
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(f.name, color = Muted, fontSize = 11.sp, modifier = Modifier.weight(0.4f))
                             Text(f.value, fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 3, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(0.6f))
