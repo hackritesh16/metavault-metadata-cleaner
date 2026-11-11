@@ -85,13 +85,18 @@ object MetadataEngine {
     )
 
     private fun inspectImage(bytes: ByteArray): List<MetaField> {
-        val exif = ExifInterface(ByteArrayInputStream(bytes))
         val out = mutableListOf<MetaField>()
-        DISPLAY_TAGS.forEach { (label, tag) ->
-            exif.getAttribute(tag)?.takeIf { it.isNotBlank() }?.let { out += MetaField(label, it) }
+        runCatching {
+            val exif = ExifInterface(ByteArrayInputStream(bytes))
+            DISPLAY_TAGS.forEach { (label, tag) ->
+                exif.getAttribute(tag)?.takeIf { it.isNotBlank() }?.let { out += MetaField(label, it) }
+            }
+            exif.latLong?.let { out += MetaField("GPS position", String.format(Locale.US, "%.6f, %.6f", it[0], it[1])) }
         }
-        exif.latLong?.let { out += MetaField("GPS position", String.format(Locale.US, "%.6f, %.6f", it[0], it[1])) }
-        return out
+        ImageContainerMetadata.inspect(bytes).forEach { finding ->
+            out += MetaField(finding.label, finding.detail)
+        }
+        return out.distinctBy { it.key to it.value }
     }
 
     private fun withExifFile(context: Context, bytes: ByteArray, block: (ExifInterface, File) -> Int): CleanResult {
@@ -112,14 +117,27 @@ object MetadataEngine {
         }
     }
 
-    private fun cleanImage(context: Context, bytes: ByteArray): CleanResult =
-        withExifFile(context, bytes) { exif, _ ->
-            var removed = 0
-            REMOVE_TAGS.forEach { tag ->
-                if (exif.getAttribute(tag) != null) { exif.setAttribute(tag, null); removed++ }
+    private fun cleanImage(context: Context, bytes: ByteArray): CleanResult {
+        val stripped = ImageContainerMetadata.clean(bytes)
+        val tmp = File.createTempFile("mv_clean_", ".img", context.cacheDir)
+        try {
+            tmp.writeBytes(stripped)
+            // ExifInterface removes remaining standard EXIF fields and preserves image pixels.
+            runCatching {
+                val exif = ExifInterface(tmp.absolutePath)
+                REMOVE_TAGS.forEach { tag -> if (exif.getAttribute(tag) != null) exif.setAttribute(tag, null) }
+                exif.saveAttributes()
             }
-            removed
+            val result = tmp.readBytes()
+            val remaining = runCatching { inspectImage(result).size }.getOrDefault(0)
+            val beforeCount = runCatching { inspectImage(bytes).size }.getOrDefault(0)
+            val removed = (beforeCount - remaining).coerceAtLeast(0)
+            return CleanResult(result, removed, remaining,
+                "JPEG/PNG/WebP known metadata blocks are stripped and the output is re-scanned. ICC colour profiles are preserved. Unknown/private payloads may remain.")
+        } finally {
+            tmp.delete()
         }
+    }
 
     /** Edit selected tags; a null or blank value removes that tag. Keys are ExifInterface tag names. */
     fun editImage(context: Context, uri: Uri, edits: Map<String, String?>): CleanResult =
