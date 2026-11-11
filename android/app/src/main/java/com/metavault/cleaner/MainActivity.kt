@@ -14,12 +14,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -31,15 +36,14 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -49,47 +53,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-// Palette shared with the web app (see style.css).
-private val Bg = Color(0xFF0A0F1A)
-private val Surface1 = Color(0xFF0F1624)
-private val Surface2 = Color(0xFF141D2F)
-private val Line = Color(0xFF1F2A40)
-private val LineStrong = Color(0xFF33425F)
-private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFF97A3BA)
-private val Accent = Color(0xFF3A63E8)
-private val AccentSoft = Color(0xFF8EABFF)
-private val AccentTint = Color(0x333A63E8)
-private val Clean = Color(0xFF3DDC97)
-private val Paper = Color(0xFFF3F5F8)
-private val PaperInk = Color(0xFF0B1018)
-private val PaperMuted = Color(0xFF4B586D)
-
-// Fonts are bundled in res/font so the app never downloads them.
-private val DisplayFont = FontFamily(
-    Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
-    Font(R.font.bricolage_grotesque_bold, FontWeight.Bold)
-)
-private val BodyFont = FontFamily(
-    Font(R.font.instrument_sans_regular, FontWeight.Normal),
-    Font(R.font.instrument_sans_medium, FontWeight.Medium),
-    Font(R.font.instrument_sans_semibold, FontWeight.SemiBold)
-)
-private val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
-
-private val VaultTypography = Typography(
-    headlineLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 39.sp, letterSpacing = (-0.9).sp),
-    headlineMedium = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp),
-    titleLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp, letterSpacing = (-0.3).sp),
-    titleMedium = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = (-0.2).sp),
-    bodyLarge = TextStyle(fontFamily = BodyFont, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = BodyFont, fontSize = 14.sp, lineHeight = 21.sp),
-    bodySmall = TextStyle(fontFamily = BodyFont, fontSize = 13.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp)
-)
 
 private enum class Page(val label: String) {
     HOME("Home"), BROWSE("Browse"), PHOTOS("Photos"), VIDEOS("Videos"),
@@ -141,6 +104,12 @@ private fun summaryText(result: CleanResult): String {
     return if (result.remaining > 0) "$removed ${result.remaining} known field(s) still present." else removed
 }
 
+private fun tabFor(page: Page): Page = when (page) {
+    Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+    Page.ABOUT -> Page.SETTINGS
+    else -> page
+}
+
 private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia> {
     val resolver = context.contentResolver
     val results = mutableListOf<DeviceMedia>()
@@ -179,8 +148,8 @@ private fun loadDeviceMedia(context: android.content.Context): List<DeviceMedia>
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(10, 15, 26)
-        window.navigationBarColor = android.graphics.Color.rgb(15, 22, 36)
+        window.statusBarColor = android.graphics.Color.rgb(5, 8, 15)
+        window.navigationBarColor = android.graphics.Color.rgb(11, 18, 36)
         window.decorView.systemUiVisibility = 0
         setContent { MetaVaultApp() }
     }
@@ -191,6 +160,7 @@ class MainActivity : ComponentActivity() {
 private fun MetaVaultApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
+    val reduceMotion = rememberReduceMotion()
     var page by remember { mutableStateOf(Page.HOME) }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("No file selected") }
@@ -268,62 +238,28 @@ private fun MetaVaultApp() {
         }
     }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            background = Bg, surface = Surface1, surfaceVariant = Surface2,
-            primary = Accent, onPrimary = Color.White,
-            secondary = AccentSoft, onSecondary = PaperInk,
-            secondaryContainer = AccentTint, onSecondaryContainer = TextMain,
-            tertiary = Clean, onTertiary = Color(0xFF04210F),
-            onBackground = TextMain, onSurface = TextMain, onSurfaceVariant = Muted,
-            outline = LineStrong, outlineVariant = Line
-        ),
-        typography = VaultTypography
-    ) {
-        Box(Modifier.fillMaxSize().background(Bg)) {
+    VaultTheme {
+        Box(Modifier.fillMaxSize()) {
+            AmbientBackground()
             Scaffold(
                 containerColor = Color.Transparent,
-                bottomBar = {
-                    Column {
-                        HorizontalDivider(color = Line)
-                        NavigationBar(containerColor = Surface1, tonalElevation = 0.dp) {
-                            val activeTab = when (page) {
-                                Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
-                                Page.ABOUT -> Page.SETTINGS
-                                else -> page
-                            }
-                            listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
-                                val icon = when (item) {
-                                    Page.HOME -> Icons.Default.Home
-                                    Page.BROWSE -> Icons.Default.FolderOpen
-                                    Page.CLEANER -> Icons.Default.AutoAwesome
-                                    Page.HISTORY -> Icons.Default.History
-                                    else -> Icons.Default.Settings
-                                }
-                                NavigationBarItem(
-                                    selected = activeTab == item,
-                                    onClick = { page = item },
-                                    icon = { Icon(icon, contentDescription = item.label) },
-                                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = AccentSoft, selectedTextColor = AccentSoft,
-                                        indicatorColor = AccentTint, unselectedIconColor = Muted,
-                                        unselectedTextColor = Muted
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
+                bottomBar = { GlassNavBar(selected = tabFor(page), onSelect = { page = it }) }
             ) { padding ->
                 Column(
                     Modifier.fillMaxSize().padding(padding).statusBarsPadding()
                         .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)
-                        .padding(top = 12.dp, bottom = 24.dp),
+                        .padding(top = 12.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp)
                 ) {
                     Header(onAbout = { page = Page.ABOUT })
-                    AnimatedContent(targetState = page, label = "page") { current ->
+                    AnimatedContent(
+                        targetState = page,
+                        label = "page",
+                        transitionSpec = {
+                            if (reduceMotion) EnterTransition.None togetherWith ExitTransition.None
+                            else (fadeIn(tween(260)) + slideInVertically(tween(260)) { it / 14 }) togetherWith fadeOut(tween(140))
+                        }
+                    ) { current ->
                         when (current) {
                             Page.HOME -> HomePage(
                                 onBrowse = { page = Page.BROWSE }, onClean = { page = Page.CLEANER },
@@ -401,6 +337,55 @@ private fun MetaVaultApp() {
     }
 }
 
+/** Floating glass tab bar. The active tab gets a tinted pill. */
+@Composable
+private fun GlassNavBar(selected: Page, onSelect: (Page) -> Unit) {
+    val items = listOf(
+        Page.HOME to Icons.Default.Home,
+        Page.BROWSE to Icons.Default.FolderOpen,
+        Page.CLEANER to Icons.Default.AutoAwesome,
+        Page.HISTORY to Icons.Default.History,
+        Page.SETTINGS to Icons.Default.Settings
+    )
+    GlassSurface(
+        modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+        cornerRadius = 30.dp,
+        elevation = 20.dp
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            items.forEach { (page, icon) ->
+                val active = selected == page
+                val pill = RoundedCornerShape(22.dp)
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .clip(pill)
+                        .background(if (active) AccentTint else Color.Transparent, pill)
+                        .clickable(role = Role.Tab, onClick = { onSelect(page) })
+                        .padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(icon, contentDescription = page.label, tint = if (active) AccentSoft else Muted, modifier = Modifier.size(22.dp))
+                    Text(page.label, color = if (active) AccentSoft else Muted, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusDot(text: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(color, RoundedCornerShape(50)))
+        Spacer(Modifier.width(6.dp))
+        Text(text, color = color, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
 @Composable
 private fun BrandMark(markSize: Dp) {
     Canvas(Modifier.size(markSize)) {
@@ -421,11 +406,15 @@ private fun BrandMark(markSize: Dp) {
 private fun Header(onAbout: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            BrandMark(32.dp)
+            BrandMark(34.dp)
             Spacer(Modifier.width(10.dp))
             Text("MetaVault", color = TextMain, fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 21.sp, letterSpacing = (-0.4).sp)
         }
-        Surface(color = Color.Transparent, shape = RoundedCornerShape(50), border = BorderStroke(1.dp, LineStrong), modifier = Modifier.clickable { onAbout() }) {
+        GlassSurface(
+            modifier = Modifier.clip(RoundedCornerShape(50)).clickable { onAbout() },
+            cornerRadius = 50.dp,
+            elevation = 0.dp
+        ) {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(7.dp).background(Clean, RoundedCornerShape(50)))
                 Spacer(Modifier.width(8.dp))
@@ -450,26 +439,38 @@ private fun RedactionCard() {
         "Software" to "Snapseed 2.0",
         "Author" to "Priya Nair"
     )
-    Column(Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("IMG_4821.jpg", color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
-            Text("Example data", color = PaperMuted, style = MaterialTheme.typography.bodySmall)
-        }
-        rows.forEachIndexed { index, (label, value) ->
-            HorizontalDivider(color = Color(0xFFD2D9E3), modifier = Modifier.padding(top = 12.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(84.dp))
-                Box {
-                    Text(value, color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
-                    val fraction = (progress.value * rows.size - index).coerceIn(0f, 1f)
-                    Box(Modifier.matchParentSize()) {
-                        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(PaperInk, RoundedCornerShape(2.dp)))
+    // Glass tray with a paper sheet inside, so the redaction bars stay high contrast.
+    GlassSurface(cornerRadius = 28.dp, elevation = 24.dp) {
+        Column(Modifier.fillMaxWidth().padding(10.dp)) {
+            Column(
+                Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(20.dp)).padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("IMG_4821.jpg", color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
+                    Text("Example data", color = PaperMuted, style = MaterialTheme.typography.bodySmall)
+                }
+                rows.forEachIndexed { index, (label, value) ->
+                    HorizontalDivider(color = Color(0xFFD2D9E3), modifier = Modifier.padding(top = 12.dp))
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(label, color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(84.dp))
+                        Box {
+                            Text(value, color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
+                            val fraction = (progress.value * rows.size - index).coerceIn(0f, 1f)
+                            Box(Modifier.matchParentSize()) {
+                                Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(PaperInk, RoundedCornerShape(2.dp)))
+                            }
+                        }
                     }
                 }
+                Text("What MetaVault removes from your copy.", color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
             }
         }
-        Text("What MetaVault removes from your copy.", color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
     }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, color = TextMain, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
@@ -484,11 +485,11 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
             PrimaryButton("Browse files", Icons.Default.FolderOpen, onBrowse)
             SecondaryButton("Open cleaner", Icons.Default.AutoAwesome, onClean)
         }
-        Text("File types", color = TextMain, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
+        SectionTitle("File types")
         CategoryGrid(onCategory)
-        VaultCard {
+        GlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Security, null, tint = AccentSoft, modifier = Modifier.size(28.dp))
+                IconBadge(icon = Icons.Default.Security)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text("Processed on your device", color = TextMain, style = MaterialTheme.typography.titleMedium)
@@ -496,28 +497,30 @@ private fun HomePage(onBrowse: () -> Unit, onClean: () -> Unit, onCategory: (Pag
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().clickable { onHistory() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("View cleaning history", color = TextMain, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, null, tint = AccentSoft)
+        GlassCard(modifier = Modifier.clip(RoundedCornerShape(24.dp)).clickable { onHistory() }) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("View cleaning history", color = TextMain, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = AccentSoft)
+            }
         }
     }
 }
 
 @Composable
 private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: List<DeviceMedia>, libraryStatus: String, onOpenMedia: (DeviceMedia) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("File library", "Browse by category and choose files securely.")
-        VaultCard {
+        GlassCard {
             Text("Browse files", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text("Use Android's system picker to open the files you choose. MetaVault does not silently scan your storage.", color = Muted, style = MaterialTheme.typography.bodySmall)
             PrimaryButton("Browse all files", Icons.Default.FolderOpen, onPick)
         }
         CategoryGrid(onCategory)
-        VaultCard {
+        GlassCard {
             Text("Access and privacy", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text("Only files you select are opened. Full-storage access is optional and is not required for the system picker.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
-        VaultCard {
+        GlassCard {
             Text("On-device library", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text(libraryStatus, color = Muted, style = MaterialTheme.typography.bodySmall)
             val grouped = media.groupBy { it.category }
@@ -534,13 +537,13 @@ private fun BrowsePage(onCategory: (Page) -> Unit, onPick: () -> Unit, media: Li
             } else {
                 media.take(100).forEach { item ->
                     Row(Modifier.fillMaxWidth().clickable { onOpenMedia(item) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, null, tint = AccentSoft)
+                        Icon(when (item.category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; else -> Icons.Default.MusicNote }, contentDescription = null, tint = AccentSoft)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(item.name, color = TextMain, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text(item.category + " · " + item.mime, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        Icon(Icons.Default.ChevronRight, null, tint = Muted)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Muted)
                     }
                     HorizontalDivider(color = Line)
                 }
@@ -560,7 +563,7 @@ private fun CategoryGrid(onCategory: (Page) -> Unit) {
     )
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         items.chunked(2).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { (target, icon) ->
                     val label = when (target) {
                         Page.PHOTOS, Page.DOCS -> "Cleaning available"
@@ -568,8 +571,10 @@ private fun CategoryGrid(onCategory: (Page) -> Unit) {
                         else -> "Cleaning coming soon"
                     }
                     val available = target != Page.VIDEOS && target != Page.PDFS
-                    VaultCard(Modifier.weight(1f).clickable { onCategory(target) }) {
-                        Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
+                    GlassCard(
+                        modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(24.dp)).clickable { onCategory(target) }
+                    ) {
+                        IconBadge(icon = icon, size = 42.dp)
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
                         Text(label, color = if (available) Clean else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -582,14 +587,14 @@ private fun CategoryGrid(onCategory: (Page) -> Unit) {
 
 @Composable
 private fun CategoryPage(page: Page, formats: String, description: String, support: String, onPick: () -> Unit, onCleaner: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading(page.label, description)
-        VaultCard {
+        GlassCard {
             Text(formats, color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text(support, color = Muted, style = MaterialTheme.typography.bodySmall)
             PrimaryButton("Choose files", Icons.Default.FolderOpen, onPick)
         }
-        VaultCard {
+        GlassCard {
             Text("How it works", color = TextMain, style = MaterialTheme.typography.titleMedium)
             InfoLine("1", "Choose files", "Select only the files you want to work with.")
             InfoLine("2", "Review support", "MetaVault tells you what it can process.")
@@ -601,72 +606,57 @@ private fun CategoryPage(page: Page, formats: String, description: String, suppo
 
 @Composable
 private fun CleanerPage(
-    fileName: String,
-    mime: String,
-    kind: MetadataEngine.Kind?,
-    inspection: Inspection,
-    busy: Boolean,
-    status: String,
-    output: CleanOutput?,
-    onPick: () -> Unit,
-    onClean: () -> Unit,
-    onSave: () -> Unit
+    fileName: String, mime: String, kind: MetadataEngine.Kind?, inspection: Inspection,
+    busy: Boolean, status: String, output: CleanOutput?,
+    onPick: () -> Unit, onClean: () -> Unit, onSave: () -> Unit
 ) {
     val cleanable = kind == MetadataEngine.Kind.IMAGE || kind == MetadataEngine.Kind.MP3 || kind == MetadataEngine.Kind.OFFICE
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Cleaner", "Pick a file, review what it contains, then save a clean copy.")
-        VaultCard {
+        GlassCard {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("Selected file", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 if (kind != null) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Check, null, tint = Clean, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Ready", color = Clean, style = MaterialTheme.typography.labelLarge)
-                    }
+                    StatusDot("Ready", Clean)
                 } else {
                     Text("None yet", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.InsertDriveFile, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
+                IconBadge(icon = Icons.Default.InsertDriveFile)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(if (kind != null) fileName else "No file selected", color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(if (kind != null) mime else "Choose a file to get started", color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
-            PrimaryButton("Choose file", Icons.Default.FolderOpen, onPick)
+            SecondaryButton("Choose file", Icons.Default.FolderOpen, onPick)
         }
         if (kind != null) {
-            VaultCard {
+            GlassCard {
                 Text("Metadata found", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 MetadataSection(kind, inspection)
             }
-            VaultCard {
+            GlassCard {
                 Text("What gets removed", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text(coverageText(kind), color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
-        Button(
-            onClick = onClean, enabled = kind != null && cleanable && !busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Accent, contentColor = Color.White,
-                disabledContainerColor = Accent.copy(alpha = 0.45f), disabledContentColor = Color.White.copy(alpha = 0.75f)
-            )
-        ) {
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null)
-            Spacer(Modifier.width(9.dp))
-            Text(if (busy) "Cleaning…" else "Clean file", fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
+        PrimaryButton(
+            label = if (busy) "Cleaning…" else "Clean file",
+            icon = Icons.Default.AutoAwesome,
+            onClick = onClean,
+            enabled = kind != null && cleanable && !busy
+        )
         if (output != null) {
             CleanReadyCard(output, onSave)
         }
-        VaultCard { Text(status, color = if (output != null) Clean else Muted, style = MaterialTheme.typography.bodySmall) }
-        VaultCard {
+        GlassCard {
+            Text(status, color = if (output != null) Clean else Muted, style = MaterialTheme.typography.bodySmall)
+        }
+        GlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Info, null, tint = AccentSoft, modifier = Modifier.size(18.dp))
+                Icon(Icons.Default.Info, contentDescription = null, tint = AccentSoft, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Text(
                     "Supported now: JPG, PNG and WEBP photos, MP3 ID3 tags, and DOCX, XLSX and PPTX document properties. Video, other audio and PDF cleaning are not available yet.",
@@ -701,15 +691,9 @@ private fun MetadataSection(kind: MetadataEngine.Kind, inspection: Inspection) {
 @Composable
 private fun CleanReadyCard(output: CleanOutput, onSave: () -> Unit) {
     val result = output.result
-    Column(
-        Modifier.fillMaxWidth()
-            .background(Clean.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
-            .border(1.dp, Clean.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
+    GlassCard(tint = Clean) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Verified, null, tint = Clean, modifier = Modifier.size(28.dp))
+            IconBadge(icon = Icons.Default.Verified, tint = Clean, iconColor = Clean)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text("Clean copy ready", color = TextMain, style = MaterialTheme.typography.titleMedium)
@@ -718,22 +702,29 @@ private fun CleanReadyCard(output: CleanOutput, onSave: () -> Unit) {
         }
         Text(summaryText(result), color = TextMain, style = MaterialTheme.typography.bodySmall)
         Text(result.note, color = Muted, style = MaterialTheme.typography.bodySmall)
-        PrimaryButton("Save clean copy", Icons.Default.Download, onSave, container = Clean, content = Color(0xFF04210F))
+        PrimaryButton(
+            label = "Save clean copy",
+            icon = Icons.Default.Download,
+            onClick = onSave,
+            gradient = listOf(Clean, Color(0xFF7BE8B8)),
+            contentColor = CleanInk,
+            glow = Clean
+        )
     }
 }
 
 @Composable
 private fun HistoryPage(history: List<HistoryEntry>) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("History", "A local record of files you have exported in this session.")
         if (history.isEmpty()) {
-            VaultCard {
-                Icon(Icons.Default.History, null, tint = AccentSoft, modifier = Modifier.size(32.dp))
+            GlassCard {
+                IconBadge(icon = Icons.Default.History, size = 48.dp)
                 Text("Nothing here yet", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text("Your saved clean copies will appear here. History is kept in memory for this session only.", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         } else history.forEach {
-            VaultCard {
+            GlassCard {
                 Text(it.name, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 Text(it.detail, color = Muted, style = MaterialTheme.typography.bodySmall)
             }
@@ -743,15 +734,15 @@ private fun HistoryPage(history: List<HistoryEntry>) {
 
 @Composable
 private fun SettingsPage(onAbout: () -> Unit, onPermissions: () -> Unit, status: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Settings", "Manage access and learn how MetaVault handles your files.")
-        VaultCard {
+        GlassCard {
             Text("Privacy and access", color = TextMain, style = MaterialTheme.typography.titleMedium)
             SettingsAction("Optional file access", "Open Android's app-specific access settings", Icons.Default.FolderOpen, onPermissions)
             HorizontalDivider(color = Line)
             SettingsAction("Privacy and about", "How local processing works", Icons.Default.Shield, onAbout)
         }
-        VaultCard {
+        GlassCard {
             Text("Current session", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text(status, color = Muted, style = MaterialTheme.typography.bodySmall)
             Text("No cloud upload or account is required for cleaning.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -761,14 +752,14 @@ private fun SettingsPage(onAbout: () -> Unit, onPermissions: () -> Unit, status:
 
 @Composable
 private fun AboutPage() {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("About MetaVault", "A private workspace for cleaner file sharing.")
-        VaultCard {
+        GlassCard {
             BrandMark(48.dp)
             Text("MetaVault", color = TextMain, style = MaterialTheme.typography.headlineMedium)
             Text("MetaVault is a privacy-first metadata cleaner built to help you take control of the information attached to your files. Photos, audio and documents can carry details such as capture time, device, location or author. MetaVault removes the supported metadata and saves a new copy. Processing happens on your device, and your original file is never overwritten.", color = Muted, style = MaterialTheme.typography.bodyMedium)
         }
-        VaultCard {
+        GlassCard {
             InfoBullet("Local by design", "Cleaning runs on your device.")
             InfoBullet("Originals stay safe", "Cleaned files are saved as a new copy.")
             InfoBullet("Honest support", "JPG, PNG and WEBP photos, MP3 ID3 tags, and DOCX, XLSX and PPTX document properties can be cleaned. Video, other audio and PDF cleaning are planned and are not active in this build.")
@@ -786,50 +777,12 @@ private fun PageHeading(title: String, subtitle: String) {
 }
 
 @Composable
-private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier.fillMaxWidth()
-            .background(Surface1, RoundedCornerShape(18.dp))
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp), content = content
-    )
-}
-
-@Composable
-private fun PrimaryButton(
-    label: String, icon: ImageVector, onClick: () -> Unit,
-    container: Color = Accent, content: Color = Color.White
-) {
-    Button(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContentColor = content)
-    ) {
-        Icon(icon, null)
-        Spacer(Modifier.width(9.dp))
-        Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-    }
-}
-
-@Composable
-private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, LineStrong),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
-    ) {
-        Icon(icon, null)
-        Spacer(Modifier.width(9.dp))
-        Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-    }
-}
-
-@Composable
 private fun InfoLine(number: String, title: String, detail: String) {
     Row(verticalAlignment = Alignment.Top) {
-        Box(Modifier.size(24.dp).border(1.dp, LineStrong, RoundedCornerShape(50)), contentAlignment = Alignment.Center) {
-            Text(number, color = AccentSoft, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        GlassSurface(modifier = Modifier.size(26.dp), cornerRadius = 13.dp, elevation = 0.dp) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(number, color = AccentSoft, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            }
         }
         Spacer(Modifier.width(12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -850,12 +803,12 @@ private fun InfoBullet(title: String, detail: String) {
 @Composable
 private fun SettingsAction(title: String, detail: String, icon: ImageVector, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, tint = AccentSoft)
+        IconBadge(icon = icon, size = 40.dp)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, color = TextMain, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Text(detail, color = Muted, style = MaterialTheme.typography.bodySmall)
         }
-        Icon(Icons.Default.ChevronRight, null, tint = Muted)
+        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Muted)
     }
 }
