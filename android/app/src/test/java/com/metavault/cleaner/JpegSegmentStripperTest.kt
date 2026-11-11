@@ -30,19 +30,48 @@ class JpegSegmentStripperTest {
     private val jfif = seg(0xE0, "JFIF\u0000".toByteArray() + ByteArray(9))
     private val exif = seg(0xE1, "Exif\u0000\u0000".toByteArray() + ByteArray(8))
     private val icc = seg(0xE2, "ICC_PROFILE\u0000".toByteArray() + ByteArray(5))
-    private val xmp = seg(0xE1, "http://ns.adobe.com/xap/1.0/\u0000<x:xmpmeta/>".toByteArray())
+    private val xmp = seg(
+        0xE1,
+        ("http://ns.adobe.com/xap/1.0/\u0000<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF>" +
+            "<rdf:Description xmp:CreatorTool=\"Stable Diffusion\"/></rdf:RDF></x:xmpmeta>").toByteArray()
+    )
     private val iptc = seg(0xED, "Photoshop 3.0\u0000".toByteArray() + ByteArray(6))
     private val comment = seg(0xFE, "secret note".toByteArray())
     private val vendor = seg(0xE5, ByteArray(10) { 7 })
+    private val c2pa = seg(0xEB, byteArrayOf(0x4A, 0x50, 0, 0) + "jumbc2pa".toByteArray())
     private val dqt = seg(0xDB, ByteArray(65) { 3 })
 
+    // Expected minimal EXIF block for orientation 6: "Exif\0\0" + big-endian TIFF with a single Orientation entry.
+    private val orientation6 = seg(
+        0xE1,
+        "Exif\u0000\u0000".toByteArray() + byteArrayOf(
+            0x4D, 0x4D, 0x00, 0x2A, 0x00, 0x00, 0x00, 0x08,
+            0x00, 0x01,
+            0x01, 0x12, 0x00, 0x03, 0x00, 0x00, 0x00, 0x01,
+            0x00, 0x06, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00
+        )
+    )
+
     @Test
-    fun strip_removesXmpIptcCommentAndVendorBlocks_keepsImageSegments() {
-        val input = jpeg(jfif, exif, icc, xmp, iptc, comment, vendor, dqt)
+    fun strip_removesAllMetadataBlocks_keepsImageSegments() {
+        val input = jpeg(jfif, exif, icc, xmp, iptc, comment, vendor, c2pa, dqt)
         val result = JpegSegmentStripper.strip(input)
-        assertArrayEquals(jpeg(jfif, exif, icc, dqt), result.bytes)
-        assertEquals(4, result.removed.size)
+        assertArrayEquals(jpeg(jfif, icc, dqt), result.bytes)
+        assertEquals(6, result.removed.size)
         assertEquals(0, result.trailingBytes)
+    }
+
+    @Test
+    fun strip_keepsRotatedOrientationOnly() {
+        val result = JpegSegmentStripper.strip(jpeg(jfif, exif, dqt), orientation = 6)
+        assertArrayEquals(jpeg(jfif, orientation6, dqt), result.bytes)
+    }
+
+    @Test
+    fun strip_normalOrientation_writesNoExif() {
+        val result = JpegSegmentStripper.strip(jpeg(jfif, exif, dqt), orientation = 1)
+        assertArrayEquals(jpeg(jfif, dqt), result.bytes)
     }
 
     @Test
@@ -62,23 +91,26 @@ class JpegSegmentStripperTest {
     }
 
     @Test
-    fun scan_reportsKindsAndCommentText() {
-        val found = JpegSegmentStripper.scan(jpeg(jfif, exif, xmp, iptc, comment, vendor, dqt))
+    fun scan_reportsKindsCommentTextAndXmpFields() {
+        val found = JpegSegmentStripper.scan(jpeg(jfif, exif, xmp, iptc, comment, vendor, c2pa, dqt))
         assertEquals(
             listOf(
-                JpegSegmentStripper.Kind.XMP, JpegSegmentStripper.Kind.IPTC,
-                JpegSegmentStripper.Kind.COMMENT, JpegSegmentStripper.Kind.OTHER_APP
+                JpegSegmentStripper.Kind.EXIF, JpegSegmentStripper.Kind.XMP, JpegSegmentStripper.Kind.IPTC,
+                JpegSegmentStripper.Kind.COMMENT, JpegSegmentStripper.Kind.OTHER_APP, JpegSegmentStripper.Kind.C2PA
             ),
             found.map { it.kind }
         )
         assertEquals("secret note", found.first { it.kind == JpegSegmentStripper.Kind.COMMENT }.summary)
+        val xmpFields = found.first { it.kind == JpegSegmentStripper.Kind.XMP }.details
+        assertTrue(xmpFields.contains("xmp:CreatorTool" to "Stable Diffusion"))
     }
 
     @Test
     fun strip_result_hasNoMetadataLeft() {
-        val result = JpegSegmentStripper.strip(jpeg(jfif, xmp, iptc, comment, vendor, dqt))
+        val result = JpegSegmentStripper.strip(jpeg(jfif, exif, xmp, iptc, comment, vendor, c2pa, dqt))
         assertTrue(JpegSegmentStripper.scan(result.bytes).isEmpty())
         assertFalse(String(result.bytes, Charsets.ISO_8859_1).contains("secret note"))
+        assertFalse(String(result.bytes, Charsets.ISO_8859_1).contains("Stable Diffusion"))
     }
 
     @Test
