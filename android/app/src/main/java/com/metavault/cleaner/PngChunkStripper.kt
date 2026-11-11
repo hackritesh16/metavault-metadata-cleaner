@@ -12,7 +12,7 @@ import java.util.zip.Inflater
  *
  * Removed: tEXt / zTXt / iTXt text chunks (this is where Stable Diffusion, ComfyUI, NovelAI and similar tools
  *          store prompts, seeds and workflows; iTXt also carries XMP), eXIf (EXIF), tIME (last-modified time)
- *          and caBX (C2PA content credentials).
+ *          and caBX (C2PA content credentials, as written by ChatGPT/DALL-E and other AI services).
  * Data after the IEND chunk is kept unchanged and reported through [Result.trailingBytes].
  *
  * Pure Kotlin with no Android dependencies, so it can be unit-tested on the JVM.
@@ -109,7 +109,10 @@ object PngChunkStripper {
                     u(d, start + 4), u(d, start + 5), u(d, start + 6)
                 )
             ) else Found("Last modified", "$len bytes")
-            "caBX" -> Found("C2PA content credentials", "$len bytes")
+            "caBX" -> {
+                val fields = C2paReader.fields(d.copyOfRange(start, end))
+                Found("C2PA content credentials", C2paReader.summary(fields, len), fields)
+            }
             else -> Found(type, "$len bytes")
         }
     }

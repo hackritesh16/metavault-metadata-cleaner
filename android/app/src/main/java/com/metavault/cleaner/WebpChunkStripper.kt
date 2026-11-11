@@ -90,6 +90,9 @@ object WebpChunkStripper {
     private fun describe(type: String, d: ByteArray, start: Int, size: Int): Found = when (type) {
         "EXIF" -> Found("EXIF block", "$size bytes", isExif = true)
         "XMP " -> Found("XMP block", "$size bytes", XmpSummary.fields(String(d, start, size, Charsets.UTF_8)))
-        else -> Found("C2PA content credentials", "$size bytes")
+        else -> {
+            val fields = C2paReader.fields(d.copyOfRange(start, start + size))
+            Found("C2PA content credentials", C2paReader.summary(fields, size), fields)
+        }
     }
 }

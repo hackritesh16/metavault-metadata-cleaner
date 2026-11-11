@@ -21,8 +21,8 @@ class CleanResult(val bytes: ByteArray, val removed: Int, val remaining: Int, va
  * On-device metadata engine. Everything here is local; nothing is uploaded.
  * Images (no re-encoding, pixels untouched):
  *  - JPG: all EXIF (incl. GPS/thumbnail), XMP, IPTC, C2PA, comments and other app blocks.
- *  - PNG: text chunks (AI prompts/parameters), XMP, eXIf, tIME, C2PA.
- *  - WEBP: EXIF, XMP and C2PA chunks.
+ *  - PNG: text chunks (AI prompts/parameters), XMP, eXIf, tIME, C2PA (readable details are listed).
+ *  - WEBP: EXIF, XMP and C2PA chunks (C2PA details are listed).
  * Other formats: MP3 (ID3v2/ID3v1), DOCX/XLSX/PPTX (docProps).
  * View-only: other audio/video via MediaMetadataRetriever.
  * Not implemented: PDF, video/audio cleaning other than MP3, invisible pixel watermarks (not metadata).
@@ -125,7 +125,9 @@ object MetadataEngine {
         val out = mutableListOf<MetaField>()
         fun add(label: String, value: String, details: List<Pair<String, String>>) {
             out += MetaField(label, value)
-            details.forEach { (k, v) -> out += MetaField("XMP \u00B7 $k", v) }
+            // XMP details carry bare tag names; C2PA details already carry their own "C2PA \u00B7 ..." labels.
+            val prefix = if (label == "XMP block") "XMP \u00B7 " else ""
+            details.forEach { (k, v) -> out += MetaField(prefix + k, v) }
         }
         try {
             when {
