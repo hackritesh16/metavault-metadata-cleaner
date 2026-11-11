@@ -8,10 +8,17 @@
 - Check the latest CI run only when changing build/configuration code or when asked to verify a build.
 
 ## Product essentials
-MetaVault is a privacy-first Android metadata cleaner. Current Android implementation is an MVP:
-- JPG, PNG and WEBP image cleaning is implemented by re-encoding; it is not byte-lossless.
-- Cleaned images are saved as new files; originals are not overwritten.
-- Video, audio, PDF and Office metadata cleaning are not implemented yet.
+MetaVault is a privacy-first Android metadata cleaner (beta). Code: `android/app/src/main/java/com/metavault/cleaner/` — `MetadataEngine.kt` (view/clean/edit logic) and `MainActivity.kt` (single-file Compose UI).
+
+Implemented, with test level:
+- JPG/PNG/WEBP: view, edit and clean EXIF via ExifInterface without re-encoding. Optional "convert" re-encodes. XMP/IPTC blocks are not covered. Not device-tested.
+- MP3: ID3v2/ID3v1 removal. Unit-tested.
+- DOCX/XLSX/PPTX: core/app properties cleared. Unit-tested.
+- PDF: Info dictionary and XMP removed with PdfBox-Android. Experimental; not unit-tested or device-tested.
+- Other audio and video: metadata view only. Video cleaning is not implemented.
+- In-app gallery via MediaStore. PDF/Office files are listed only with optional all-files access.
+- Saving: "Save as new" is the default (images go to Pictures/MetaVault). "Overwrite original" requires an explicit confirmation dialog and first stores a backup in app storage; History can restore or delete it. Not device-tested.
+- CI (`Android APK Build`) runs on `main`, `feature/**` and PRs to `main`; it builds the debug APK, uploads it as an artifact, then runs unit tests.
 - Android SAF file selection is supported. Full-storage access must remain optional.
 - Never claim a feature works unless it exists and has been tested.
 

@@ -4,9 +4,15 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDDocumentInformation
+import com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -19,15 +25,16 @@ class CleanResult(val bytes: ByteArray, val removed: Int, val remaining: Int, va
 
 /**
  * On-device metadata engine. Everything here is local; nothing is uploaded.
- * Supported: JPG/PNG/WEBP (EXIF via ExifInterface, no re-encoding), MP3 (ID3v2/ID3v1), DOCX/XLSX/PPTX (docProps).
+ * Supported: JPG/PNG/WEBP (EXIF via ExifInterface, no re-encoding), MP3 (ID3v2/ID3v1),
+ * DOCX/XLSX/PPTX (docProps), PDF (Info dictionary + XMP via PdfBox-Android, experimental).
  * View-only: other audio/video via MediaMetadataRetriever.
- * Not implemented: PDF, video/audio cleaning other than MP3, XMP/IPTC blocks inside images.
+ * Not implemented: video/audio cleaning other than MP3, XMP/IPTC blocks inside images.
  */
 object MetadataEngine {
     const val MAX_BYTES = 64L * 1024 * 1024
     private const val MAX_UNZIPPED = 512L * 1024 * 1024
 
-    enum class Kind { IMAGE, MP3, OFFICE, OTHER_MEDIA, UNSUPPORTED }
+    enum class Kind { IMAGE, MP3, OFFICE, PDF, OTHER_MEDIA, UNSUPPORTED }
 
     fun kindOf(name: String, mime: String): Kind {
         val ext = name.substringAfterLast('.', "").lowercase(Locale.ROOT)
@@ -35,6 +42,7 @@ object MetadataEngine {
             mime in setOf("image/jpeg", "image/png", "image/webp") || ext in setOf("jpg", "jpeg", "png", "webp") -> Kind.IMAGE
             mime == "audio/mpeg" || ext == "mp3" -> Kind.MP3
             ext in setOf("docx", "xlsx", "pptx") -> Kind.OFFICE
+            mime == "application/pdf" || ext == "pdf" -> Kind.PDF
             mime.startsWith("audio/") || mime.startsWith("video/") -> Kind.OTHER_MEDIA
             else -> Kind.UNSUPPORTED
         }
@@ -219,6 +227,60 @@ object MetadataEngine {
         )
     }
 
+    // ---------- PDF (experimental) ----------
+    private val STANDARD_PDF_KEYS = setOf("Title", "Author", "Subject", "Keywords", "Creator", "Producer", "CreationDate", "ModDate", "Trapped")
+
+    private fun pdfDate(c: Calendar?): String? =
+        c?.let { SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(it.time) }
+
+    private fun <T> withPdf(context: Context, bytes: ByteArray, block: (PDDocument) -> T): T {
+        PDFBoxResourceLoader.init(context.applicationContext)
+        val doc = try {
+            PDDocument.load(ByteArrayInputStream(bytes))
+        } catch (e: InvalidPasswordException) {
+            error("This PDF is password-protected, so MetaVault cannot read or clean it")
+        }
+        return doc.use(block)
+    }
+
+    private fun inspectPdf(context: Context, bytes: ByteArray): List<MetaField> = withPdf(context, bytes) { doc ->
+        val info = doc.documentInformation
+        val out = mutableListOf<MetaField>()
+        fun add(key: String, value: String?) { if (!value.isNullOrBlank()) out += MetaField(key, value) }
+        add("Title", info.title)
+        add("Author", info.author)
+        add("Subject", info.subject)
+        add("Keywords", info.keywords)
+        add("Creator", info.creator)
+        add("Producer", info.producer)
+        add("Created", pdfDate(info.creationDate))
+        add("Modified", pdfDate(info.modificationDate))
+        info.metadataKeys.filter { it !in STANDARD_PDF_KEYS }.forEach { add(it, info.getCustomMetadataValue(it)) }
+        if (doc.documentCatalog.metadata != null) out += MetaField("XMP metadata", "present")
+        out
+    }
+
+    private fun cleanPdf(context: Context, bytes: ByteArray): CleanResult {
+        val (cleaned, removed) = withPdf(context, bytes) { doc ->
+            val info = doc.documentInformation
+            var count = listOf(info.title, info.author, info.subject, info.keywords, info.creator, info.producer).count { !it.isNullOrBlank() }
+            if (info.creationDate != null) count++
+            if (info.modificationDate != null) count++
+            count += info.metadataKeys.count { it !in STANDARD_PDF_KEYS }
+            if (doc.documentCatalog.metadata != null) count++
+            doc.documentInformation = PDDocumentInformation()
+            doc.documentCatalog.metadata = null
+            val out = ByteArrayOutputStream()
+            doc.save(out)
+            out.toByteArray() to count
+        }
+        val remaining = inspectPdf(context, cleaned).size
+        return CleanResult(
+            cleaned, removed, remaining,
+            "PDF Info fields and XMP were removed and the file was rewritten. Text, images and the document ID inside the pages are not touched. PDF cleaning is experimental."
+        )
+    }
+
     // ---------- Other audio/video (view only) ----------
     private fun inspectMedia(context: Context, uri: Uri): List<MetaField> {
         val r = MediaMetadataRetriever()
@@ -258,6 +320,7 @@ object MetadataEngine {
         when (kindOf(name, mime)) {
             Kind.IMAGE -> inspectImage(load(context, uri))
             Kind.OFFICE -> inspectOffice(load(context, uri))
+            Kind.PDF -> inspectPdf(context, load(context, uri))
             Kind.MP3, Kind.OTHER_MEDIA -> inspectMedia(context, uri)
             Kind.UNSUPPORTED -> emptyList()
         }
@@ -268,6 +331,7 @@ object MetadataEngine {
             Kind.IMAGE -> cleanImage(context, load(context, uri))
             Kind.MP3 -> cleanMp3(load(context, uri))
             Kind.OFFICE -> cleanOffice(load(context, uri))
+            Kind.PDF -> cleanPdf(context, load(context, uri))
             else -> null
         }
 }

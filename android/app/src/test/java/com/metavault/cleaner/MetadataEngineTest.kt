@@ -16,7 +16,8 @@ class MetadataEngineTest {
         assertEquals(MetadataEngine.Kind.IMAGE, MetadataEngine.kindOf("a.JPG", "application/octet-stream"))
         assertEquals(MetadataEngine.Kind.MP3, MetadataEngine.kindOf("song.mp3", "audio/mpeg"))
         assertEquals(MetadataEngine.Kind.OFFICE, MetadataEngine.kindOf("report.docx", "application/octet-stream"))
-        assertEquals(MetadataEngine.Kind.UNSUPPORTED, MetadataEngine.kindOf("x.pdf", "application/pdf"))
+        assertEquals(MetadataEngine.Kind.PDF, MetadataEngine.kindOf("x.pdf", "application/pdf"))
+        assertEquals(MetadataEngine.Kind.UNSUPPORTED, MetadataEngine.kindOf("notes.txt", "text/plain"))
     }
 
     @Test
