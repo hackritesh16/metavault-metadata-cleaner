@@ -1239,6 +1239,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
             Box(Modifier.offset(x = indicatorOffset).width(indicatorWidth).fillMaxHeight()
                 .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
                 .background(Color.White.copy(alpha = 0.16f))
+            )
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { item ->
                 val icon = when (item) {
