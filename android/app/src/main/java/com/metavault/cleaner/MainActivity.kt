@@ -1274,14 +1274,17 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
 @Composable
 private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(20.dp)
-    Box(modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
+    // Keep caller interactions inside the rounded glass clip so ripples never form
+    // rectangular patches over the transparent surface.
+    Box(Modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
         .background(Brush.linearGradient(listOf(
             Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.13f)
         )))
         .border(1.dp, Brush.linearGradient(listOf(
             Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.20f),
             Color.White.copy(alpha = 0.28f)
-        )), shape)) {
+        )), shape)
+        .then(modifier)) {
         Column(Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
