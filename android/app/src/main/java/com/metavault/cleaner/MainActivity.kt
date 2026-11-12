@@ -754,7 +754,7 @@ private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
             drawCircle(Brush.radialGradient(listOf(colors[1].copy(alpha = 0.24f), colors[1].copy(alpha = 0.07f), Color.Transparent), b, radius * 0.82f), radius * 0.82f, b)
             val c = Offset(size.width * 0.90f, size.height * 1.02f - shift * 0.42f)
             drawCircle(Brush.radialGradient(listOf(colors[2].copy(alpha = 0.22f), Color.Transparent), c, radius * 0.72f), radius * 0.72f, c)
-            drawRect(Color(0x55070D18))
+            drawRect(Color(0x33070D18))
         }
     }
 }
@@ -1223,11 +1223,11 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
             .shadow(14.dp, shape).clip(shape)
             .background(Brush.linearGradient(listOf(
-                Color(0xA81B2A40), Color(0x94101B2D), Color(0xA81A2B43)
+                Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.14f)
             )))
             .border(1.dp, Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.32f), AccentSoft.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.08f)
+                Color.White.copy(alpha = 0.48f), Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.30f)
             )), shape)
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp)) {
@@ -1238,7 +1238,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
                 animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
             Box(Modifier.offset(x = indicatorOffset).width(indicatorWidth).fillMaxHeight()
                 .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
-                .background(Brush.verticalGradient(listOf(Accent.copy(alpha = 0.34f), Accent.copy(alpha = 0.12f)))))
+                .background(Color.White.copy(alpha = 0.16f))
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { item ->
                 val icon = when (item) {
@@ -1265,7 +1265,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         }
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
             .background(Brush.horizontalGradient(listOf(Color.Transparent,
-                Color.White.copy(alpha = 0.36f), AccentSoft.copy(alpha = 0.24f), Color.Transparent))))
+                Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.18f), Color.Transparent))))
         }
     }
 }
@@ -1275,17 +1275,17 @@ private fun VaultCard(modifier: Modifier = Modifier, content: @Composable Column
     val shape = RoundedCornerShape(20.dp)
     Box(modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
         .background(Brush.linearGradient(listOf(
-            Color(0xA61A2940), Color(0x94101B2D), Color(0xA61A2A42)
+            Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.13f)
         )))
         .border(1.dp, Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.26f), AccentSoft.copy(alpha = 0.18f),
-            Color.White.copy(alpha = 0.07f)
+            Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.20f),
+            Color.White.copy(alpha = 0.28f)
         )), shape)) {
         Column(Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
             .background(Brush.horizontalGradient(listOf(Color.Transparent,
-                Color.White.copy(alpha = 0.28f), AccentSoft.copy(alpha = 0.18f), Color.Transparent))))
+                Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.16f), Color.Transparent))))
     }
 }
 
