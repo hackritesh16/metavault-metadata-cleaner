@@ -27,6 +27,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -300,6 +302,20 @@ private fun MetaVaultApp() {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var page by remember { mutableStateOf(Page.HOME) }
+    var selectedTheme by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora") }
+    var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
+    val mainScrollState = rememberScrollState()
+    val customPhotoBitmap by produceState<Bitmap?>(null, customPhotoUri) {
+        value = customPhotoUri?.let { raw -> withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(Uri.parse(raw))?.use { BitmapFactory.decodeStream(it) } }.getOrNull() } }
+    }
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            customPhotoUri = uri.toString()
+            context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("background_photo", uri.toString()).apply()
+            say("Custom background photo applied.")
+        }
+    }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("No file selected") }
     var mime by remember { mutableStateOf("image/jpeg") }
@@ -559,15 +575,7 @@ private fun MetaVaultApp() {
             )
         }
         Box(Modifier.fillMaxSize().background(Bg)) {
-            // Ambient colour blooms sit behind translucent surfaces to create liquid-glass depth.
-            Box(Modifier.fillMaxSize().background(Brush.radialGradient(
-                colors = listOf(Color(0x553A63E8), Color(0x183DDCDA), Color.Transparent),
-                center = Offset(920f, 80f), radius = 1050f
-            )))
-            Box(Modifier.fillMaxSize().background(Brush.radialGradient(
-                colors = listOf(Color(0x263A63E8), Color.Transparent),
-                center = Offset(0f, 1500f), radius = 900f
-            )))
+            LiquidBackdrop(theme = selectedTheme, scrollOffset = mainScrollState.value.toFloat(), photo = customPhotoBitmap)
             Scaffold(
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
@@ -603,7 +611,7 @@ private fun MetaVaultApp() {
                         }
                     } else {
                         Column(
-                            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+                            Modifier.weight(1f).verticalScroll(mainScrollState).padding(bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             AnimatedContent(targetState = page, label = "page") { current ->
@@ -698,7 +706,13 @@ private fun MetaVaultApp() {
                                         }
                                     )
                                     Page.HISTORY -> HistoryPage(history, backups, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
-                                    Page.SETTINGS -> SettingsPage(allFiles = allFiles, onAbout = { page = Page.ABOUT }, onPermissions = openAllFilesAccess)
+                                    Page.SETTINGS -> SettingsPage(
+                                        allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
+                                        onThemeSelected = { selectedTheme = it; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
+                                        onCustomPhoto = { backgroundPicker.launch(arrayOf("image/*")) },
+                                        onClearPhoto = { customPhotoUri = null; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().remove("background_photo").apply() },
+                                        onAbout = { page = Page.ABOUT }, onPermissions = openAllFilesAccess
+                                    )
                                     Page.ABOUT -> AboutPage()
                                     else -> {}
                                 }
@@ -712,6 +726,35 @@ private fun MetaVaultApp() {
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
+    val colors = when (theme) {
+        "Ocean" -> listOf(Color(0xFF087EAA), Color(0xFF16C5C0), Color(0xFF173A85))
+        "Violet" -> listOf(Color(0xFF7042C8), Color(0xFFB45BDB), Color(0xFF253A91))
+        "Emerald" -> listOf(Color(0xFF087B63), Color(0xFF52C878), Color(0xFF145B8C))
+        "Sunset" -> listOf(Color(0xFFE06A42), Color(0xFFE5A044), Color(0xFF8D3C83))
+        "Rose" -> listOf(Color(0xFFC34F83), Color(0xFFEA8DAD), Color(0xFF653C9C))
+        "Midnight" -> listOf(Color(0xFF34518D), Color(0xFF526A9D), Color(0xFF15233F))
+        "Monochrome" -> listOf(Color(0xFF657184), Color(0xFF9AA5B4), Color(0xFF344054))
+        else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
+    }
+    Box(Modifier.fillMaxSize()) {
+        if (photo != null) Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.42f)
+        Canvas(Modifier.fillMaxSize()) {
+            val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
+            val radius = size.minDimension * 0.78f
+            val a = Offset(size.width * 0.84f, size.height * 0.10f - shift)
+            drawCircle(Brush.radialGradient(listOf(colors[0].copy(alpha = 0.40f), colors[0].copy(alpha = 0.10f), Color.Transparent), a, radius), radius, a)
+            val b = Offset(size.width * 0.08f, size.height * 0.72f + shift * 0.72f)
+            drawCircle(Brush.radialGradient(listOf(colors[1].copy(alpha = 0.24f), colors[1].copy(alpha = 0.07f), Color.Transparent), b, radius * 0.82f), radius * 0.82f, b)
+            val c = Offset(size.width * 0.90f, size.height * 1.02f - shift * 0.42f)
+            drawCircle(Brush.radialGradient(listOf(colors[2].copy(alpha = 0.22f), Color.Transparent), c, radius * 0.72f), radius * 0.72f, c)
+            drawRect(Color(0x99070D18))
         }
     }
 }
@@ -1100,9 +1143,34 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
 }
 
 @Composable
-private fun SettingsPage(allFiles: Boolean, onAbout: () -> Unit, onPermissions: () -> Unit) {
+private fun SettingsPage(
+    allFiles: Boolean, selectedTheme: String, hasCustomPhoto: Boolean,
+    onThemeSelected: (String) -> Unit, onCustomPhoto: () -> Unit, onClearPhoto: () -> Unit,
+    onAbout: () -> Unit, onPermissions: () -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("Settings", "Access and information.")
+        PageHeading("Settings", "Personalise your MetaVault experience.")
+        VaultCard {
+            Text("Appearance & themes", color = TextMain, style = MaterialTheme.typography.titleMedium)
+            Text("Choose a colour atmosphere for your app.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            val themes = listOf("Aurora", "Ocean", "Violet", "Emerald", "Sunset", "Rose", "Midnight", "Monochrome")
+            themes.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pair.forEach { theme ->
+                        FilterChip(selected = selectedTheme == theme, onClick = { onThemeSelected(theme) },
+                            label = { Text(theme) }, modifier = Modifier.weight(1f),
+                            leadingIcon = if (selectedTheme == theme) ({ Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }) else null)
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            HorizontalDivider(color = Line)
+            SettingsAction("Use your own photo", "Set an image from your gallery as the app background", Icons.Default.Image, onCustomPhoto)
+            if (hasCustomPhoto) {
+                Text("Your custom photo is active.", color = Clean, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onClearPhoto) { Text("Remove custom photo") }
+            }
+        }
         VaultCard {
             SettingsAction(
                 "All-files access",
@@ -1162,9 +1230,17 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
                 Color.White.copy(alpha = 0.08f)
             )), shape)
     ) {
-        Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
+        BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp)) {
+            val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
+            val activeIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
+            val indicatorWidth = maxWidth / tabs.size
+            val indicatorOffset by animateDpAsState(indicatorWidth * activeIndex,
+                animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
+            Box(Modifier.offset(x = indicatorOffset).width(indicatorWidth).fillMaxHeight()
+                .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
+                .background(Brush.verticalGradient(listOf(Accent.copy(alpha = 0.34f), Accent.copy(alpha = 0.12f)))))
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEach { item ->
                 val icon = when (item) {
                     Page.HOME -> Icons.Default.Home
                     Page.BROWSE -> Icons.Default.FolderOpen
@@ -1178,7 +1254,6 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center) {
                     Box(Modifier.clip(RoundedCornerShape(14.dp))
-                        .background(if (selected) Accent.copy(alpha = 0.28f) else Color.Transparent)
                         .padding(horizontal = 13.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
                         Icon(icon, contentDescription = item.label,
                             tint = if (selected) Color.White else Muted, modifier = Modifier.size(19.dp))
