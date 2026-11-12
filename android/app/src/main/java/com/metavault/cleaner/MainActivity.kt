@@ -67,7 +67,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -573,18 +572,75 @@ private fun MetaVaultApp() {
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    val activeTab = when (page) {
-                        Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
-                        Page.ABOUT -> Page.SETTINGS
-                        else -> page
-                    }
-                    val tabIndex = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).indexOf(activeTab).coerceAtLeast(0)
-                    LiquidGlassBottomBar(
-                        selectedIndex = tabIndex,
-                        onSelected = { index ->
-                            page = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)[index]
+                    val navShape = RoundedCornerShape(24.dp)
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Box(
+                            Modifier.fillMaxWidth().height(58.dp)
+                                .shadow(20.dp, navShape)
+                                .clip(navShape)
+                                .background(Brush.linearGradient(listOf(
+                                    Color(0xC91A2940), Color(0xB8101B2D), Color(0xC91B2B43)
+                                )), navShape)
+                                .border(1.dp, Brush.linearGradient(listOf(
+                                    Color.White.copy(alpha = 0.38f), AccentSoft.copy(alpha = 0.24f),
+                                    Color.White.copy(alpha = 0.08f)
+                                )), navShape)
+                        ) {
+                            val activeTab = when (page) {
+                                Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+                                Page.ABOUT -> Page.SETTINGS
+                                else -> page
+                            }
+                            Row(
+                                Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
+                                    val icon = when (item) {
+                                        Page.HOME -> Icons.Default.Home
+                                        Page.BROWSE -> Icons.Default.FolderOpen
+                                        Page.CLEANER -> Icons.Default.AutoAwesome
+                                        Page.HISTORY -> Icons.Default.History
+                                        else -> Icons.Default.Settings
+                                    }
+                                    val selected = activeTab == item
+                                    Column(
+                                        Modifier.weight(1f).fillMaxHeight()
+                                            .clip(RoundedCornerShape(18.dp))
+                                            .clickable { page = item }
+                                            .padding(vertical = 2.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Box(
+                                            Modifier.clip(RoundedCornerShape(14.dp))
+                                                .background(if (selected) Accent.copy(alpha = 0.22f) else Color.Transparent)
+                                                .padding(horizontal = 13.dp, vertical = 3.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                icon, contentDescription = item.label,
+                                                tint = if (selected) Color.White else Muted,
+                                                modifier = Modifier.size(19.dp)
+                                            )
+                                        }
+                                        Text(
+                                            item.label, color = if (selected) AccentSoft else Muted,
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp)
+                                        )
+                                    }
+                                }
+                            }
+                            // Fine specular highlight along the top edge, like iOS liquid glass.
+                            Box(
+                                Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+                                    .background(Brush.horizontalGradient(listOf(
+                                        Color.Transparent, Color.White.copy(alpha = 0.42f),
+                                        AccentSoft.copy(alpha = 0.30f), Color.Transparent
+                                    )))
+                            )
                         }
-                    )
+                    }
                 }
             ) { padding ->
                 Column(
