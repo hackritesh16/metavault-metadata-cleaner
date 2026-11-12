@@ -313,7 +313,7 @@ private fun MetaVaultApp() {
             runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             customPhotoUri = uri.toString()
             context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("background_photo", uri.toString()).apply()
-            say("Custom background photo applied.")
+            status = "Custom background photo applied."
         }
     }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -1266,6 +1266,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
             .background(Brush.horizontalGradient(listOf(Color.Transparent,
                 Color.White.copy(alpha = 0.36f), AccentSoft.copy(alpha = 0.24f), Color.Transparent))))
+        }
     }
 }
 
