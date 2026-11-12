@@ -49,8 +49,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -557,13 +559,34 @@ private fun MetaVaultApp() {
             )
         }
         Box(Modifier.fillMaxSize().background(Bg)) {
+            // Ambient colour blooms sit behind translucent surfaces to create liquid-glass depth.
+            Box(Modifier.fillMaxSize().background(Brush.radialGradient(
+                colors = listOf(Color(0x553A63E8), Color(0x183DDCDA), Color.Transparent),
+                center = Offset(920f, 80f), radius = 1050f
+            )))
+            Box(Modifier.fillMaxSize().background(Brush.radialGradient(
+                colors = listOf(Color(0x263A63E8), Color.Transparent),
+                center = Offset(0f, 1500f), radius = 900f
+            )))
             Scaffold(
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    Column {
-                        HorizontalDivider(color = Line)
-                        NavigationBar(containerColor = Surface1, tonalElevation = 0.dp) {
+                    val navShape = RoundedCornerShape(26.dp)
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        NavigationBar(
+                            modifier = Modifier.fillMaxWidth()
+                                .shadow(18.dp, navShape)
+                                .clip(navShape)
+                                .background(Brush.linearGradient(
+                                    listOf(Color(0xE61D2940), Color(0xD9121C2E), Color(0xE61B2940))
+                                ), navShape)
+                                .border(1.dp, Brush.linearGradient(listOf(
+                                    Color.White.copy(alpha = 0.30f), AccentSoft.copy(alpha = 0.22f), Color.White.copy(alpha = 0.07f)
+                                )), navShape),
+                            containerColor = Color.Transparent,
+                            tonalElevation = 0.dp
+                        ) {
                             val activeTab = when (page) {
                                 Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
                                 Page.ABOUT -> Page.SETTINGS
@@ -1163,10 +1186,16 @@ private fun PageHeading(title: String, subtitle: String) {
 
 @Composable
 private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
     Column(
         modifier.fillMaxWidth()
-            .background(Surface1, RoundedCornerShape(18.dp))
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
+            .shadow(14.dp, shape)
+            .background(Brush.linearGradient(listOf(
+                Color(0xE6293852), Color(0xD91A263B), Color(0xE6152033)
+            )), shape)
+            .border(1.dp, Brush.linearGradient(listOf(
+                Color.White.copy(alpha = 0.30f), AccentSoft.copy(alpha = 0.20f), Color.White.copy(alpha = 0.06f)
+            )), shape)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), content = content
     )
