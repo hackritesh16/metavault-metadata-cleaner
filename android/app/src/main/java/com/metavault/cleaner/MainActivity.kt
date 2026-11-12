@@ -77,17 +77,17 @@ import java.util.Date
 import java.util.Locale
 
 // Palette shared with the web app (see style.css).
-private val Bg = Color(0xFF0A0F1A)
-private val Surface1 = Color(0xFF0F1624)
-private val Surface2 = Color(0xFF141D2F)
-private val Line = Color(0xFF1F2A40)
-private val LineStrong = Color(0xFF33425F)
-private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFF97A3BA)
-private val Accent = Color(0xFF3A63E8)
-private val AccentSoft = Color(0xFF8EABFF)
-private val AccentTint = Color(0x333A63E8)
-private val Clean = Color(0xFF3DDC97)
+private val Bg = Color(0xFF080E19)
+private val Surface1 = Color(0xFF111D2D)
+private val Surface2 = Color(0xFF18283B)
+private val Line = Color(0xFF26374A)
+private val LineStrong = Color(0xFF40566E)
+private val TextMain = Color(0xFFF4F8FC)
+private val Muted = Color(0xFFAFBED0)
+private val Accent = Color(0xFF386DEB)
+private val AccentSoft = Color(0xFFB3C9FF)
+private val AccentTint = Color(0x33386DEB)
+private val Clean = Color(0xFF5EE5BC)
 private val Warn = Color(0xFFFFB454)
 private val Paper = Color(0xFFF3F5F8)
 private val PaperInk = Color(0xFF0B1018)
@@ -762,7 +762,7 @@ private fun Header() {
             Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(7.dp).background(Clean, RoundedCornerShape(50)))
                 Spacer(Modifier.width(8.dp))
-                Text("On device", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text("Private · On device", color = TextMain, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -810,11 +810,22 @@ private fun RedactionCard() {
 private fun HomePage(onStart: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Share the photo, not where you took it.", color = TextMain, style = MaterialTheme.typography.headlineLarge)
-            Text("Photos quietly record the location, time and device behind them. MetaVault shows that data, lets you edit or remove it, and saves a copy. Everything happens on your device.", color = Muted, style = MaterialTheme.typography.bodyLarge)
+            Text("Share the moment.\nKeep the metadata private.", color = TextMain, style = MaterialTheme.typography.headlineLarge)
+            Text("Inspect and clean supported file metadata locally. Review the details before saving a new copy — your files stay on your device.", color = Muted, style = MaterialTheme.typography.bodyLarge)
+        }
+        Surface(
+            color = Clean.copy(alpha = 0.09f),
+            shape = RoundedCornerShape(16.dp),
+            border = BorderStroke(1.dp, Clean.copy(alpha = 0.28f))
+        ) {
+            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Shield, contentDescription = null, tint = Clean)
+                Spacer(Modifier.width(10.dp))
+                Text("Local processing · No cloud upload", color = TextMain, style = MaterialTheme.typography.labelLarge)
+            }
         }
         RedactionCard()
-        PrimaryButton("Choose a file", Icons.Default.FolderOpen, onStart)
+        PrimaryButton("Browse files securely", Icons.Default.FolderOpen, onStart)
     }
 }
 
@@ -1022,7 +1033,7 @@ private fun CleanerPage(
         }
         Button(
             onClick = onClean, enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Accent, contentColor = Color.White,
                 disabledContainerColor = Accent.copy(alpha = 0.45f), disabledContentColor = Color.White.copy(alpha = 0.75f)
@@ -1165,9 +1176,9 @@ private fun PageHeading(title: String, subtitle: String) {
 private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier.fillMaxWidth()
-            .background(Surface1, RoundedCornerShape(18.dp))
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
-            .padding(16.dp),
+            .background(Surface1, RoundedCornerShape(22.dp))
+            .border(1.dp, Line, RoundedCornerShape(22.dp))
+            .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp), content = content
     )
 }
@@ -1179,7 +1190,7 @@ private fun PrimaryButton(
 ) {
     Button(
         onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContentColor = content)
     ) {
         Icon(icon, null)
@@ -1192,7 +1203,7 @@ private fun PrimaryButton(
 private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
     OutlinedButton(
         onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
-        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, LineStrong),
+        shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, LineStrong),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
     ) {
         Icon(icon, null)
