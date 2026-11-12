@@ -407,7 +407,22 @@ object MetadataEngine {
     fun load(context: Context, uri: Uri): ByteArray {
         val size = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
         check(size < 0 || size <= MAX_BYTES) { "File is larger than ${MAX_BYTES / (1024 * 1024)} MB limit" }
-        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read this file")
+        return context.contentResolver.openInputStream(uri)?.use { input ->
+            // SAF providers may report an unknown or incorrect length. Enforce the cap
+            // while reading instead of trusting the descriptor or allocating unbounded memory.
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(16 * 1024)
+            var total = 0L
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) break
+                if (read == 0) continue
+                total += read
+                check(total <= MAX_BYTES) { "File is larger than ${MAX_BYTES / (1024 * 1024)} MB limit" }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        } ?: error("Could not read this file")
     }
 
     /** Returns the metadata currently inside the file. An empty list means none found, not that the format is unsupported. */
