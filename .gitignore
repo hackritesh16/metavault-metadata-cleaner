@@ -1,0 +1,7 @@
+# Local Android build state and machine-specific SDK paths
+.gradle/
+**/build/
+android/local.properties
+*.apk
+*.aab
+.kotlin/
