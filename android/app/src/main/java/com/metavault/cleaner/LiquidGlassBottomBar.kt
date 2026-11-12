@@ -11,7 +11,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
-import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
@@ -163,18 +162,15 @@ internal class LiquidGlassNavView(context: Context) : View(context) {
                 glassPaint.shader = runtimeShader
                 glassPaint.alpha = 255
                 canvas.save()
-                canvas.clipRoundRect(shape, radius, radius)
+                val clipPath = Path().apply { addRoundRect(shape, radius, radius, Path.Direction.CW) }
+                canvas.clipPath(clipPath)
                 canvas.drawRect(shape, glassPaint)
                 canvas.restore()
                 glassPaint.shader = null
             } else if (right > left && bottom > top) {
                 glassPaint.color = Color.WHITE
                 glassPaint.alpha = 255
-                if (Build.VERSION.SDK_INT >= 31) {
-                    glassPaint.setRenderEffect(RenderEffect.createBlurEffect(5.5f * density, 5.5f * density, Shader.TileMode.CLAMP))
-                }
                 canvas.drawBitmap(captured, source, shape, glassPaint)
-                if (Build.VERSION.SDK_INT >= 31) glassPaint.setRenderEffect(null)
             }
         }
 
