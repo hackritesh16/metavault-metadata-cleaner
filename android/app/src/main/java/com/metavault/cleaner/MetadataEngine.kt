@@ -7,6 +7,7 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.util.Locale
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -272,12 +273,18 @@ object MetadataEngine {
         var start = 0
         var end = bytes.size
         var removed = 0
-        if (end >= 10 && bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) {
+        if (end >= 3 && bytes[0] == 'I'.code.toByte() && bytes[1] == 'D'.code.toByte() && bytes[2] == '3'.code.toByte()) {
+            require(end >= 10) { "Truncated ID3 header; file was not changed" }
+            val version = bytes[3].toInt() and 0xFF
+            require(version in 2..4 && (6..9).all { bytes[it].toInt() and 0x80 == 0 }) {
+                "Invalid ID3 header; file was not changed"
+            }
             val size = ((bytes[6].toInt() and 0x7F) shl 21) or ((bytes[7].toInt() and 0x7F) shl 14) or
                 ((bytes[8].toInt() and 0x7F) shl 7) or (bytes[9].toInt() and 0x7F)
-            val footer = if ((bytes[5].toInt() and 0x10) != 0) 10 else 0
+            val footer = if (version == 4 && (bytes[5].toInt() and 0x10) != 0) 10 else 0
             val total = 10 + size + footer
-            if (total in 10..end) { start = total; removed++ }
+            require(total in 10..end) { "Truncated ID3 tag; file was not changed" }
+            start = total; removed++
         }
         if (end - start >= 128 && bytes[end - 128] == 'T'.code.toByte() &&
             bytes[end - 127] == 'A'.code.toByte() && bytes[end - 126] == 'G'.code.toByte()) {
@@ -305,13 +312,14 @@ object MetadataEngine {
      * extra data and comment — omitting these can corrupt ZIP-based formats like DOCX.
      */
     private fun forEachZipEntry(bytes: ByteArray, block: (ZipEntry, ByteArray) -> Unit) {
+        require(bytes.size >= 4 && bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
+            bytes[2] == 3.toByte() && bytes[3] == 4.toByte()) { "Not a supported Office ZIP archive" }
         var total = 0L
         ZipInputStream(ByteArrayInputStream(bytes)).use { zin ->
             var e = zin.nextEntry
             while (e != null) {
-                val data = zin.readBytes()
+                val data = readBounded(zin, minOf(MAX_BYTES, MAX_UNZIPPED - total))
                 total += data.size
-                check(total <= MAX_UNZIPPED) { "Archive is too large to process safely" }
                 block(e, data)
                 e = zin.nextEntry
             }
@@ -407,7 +415,32 @@ object MetadataEngine {
     fun load(context: Context, uri: Uri): ByteArray {
         val size = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
         check(size < 0 || size <= MAX_BYTES) { "File is larger than ${MAX_BYTES / (1024 * 1024)} MB limit" }
-        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Could not read this file")
+        return context.contentResolver.openInputStream(uri)?.use { readBounded(it, MAX_BYTES) } ?: error("Could not read this file")
+    }
+
+    /** Enforce limits while reading, including providers with unknown or incorrect lengths. */
+    internal fun readBounded(input: InputStream, limit: Long): ByteArray {
+        require(limit >= 0) { "Invalid read limit" }
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            // Read at most one byte beyond the allowance, then reject before buffering it.
+            val count = input.read(buffer, 0, minOf(buffer.size.toLong(), limit - total + 1).toInt())
+            if (count < 0) break
+            if (count == 0) {
+                val next = input.read()
+                if (next < 0) break
+                check(total < limit) { "File or archive entry is too large to process safely" }
+                output.write(next)
+                total++
+            } else {
+                total += count
+                check(total <= limit) { "File or archive entry is too large to process safely" }
+                output.write(buffer, 0, count)
+            }
+        }
+        return output.toByteArray()
     }
 
     /** Returns the metadata currently inside the file. An empty list means none found, not that the format is unsupported. */

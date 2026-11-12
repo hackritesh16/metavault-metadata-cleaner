@@ -51,7 +51,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -67,6 +66,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -87,7 +87,7 @@ private val Surface2 = Color(0xFF141D2F)
 private val Line = Color(0xFF1F2A40)
 private val LineStrong = Color(0xFF33425F)
 private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFF97A3BA)
+private val Muted = Color(0xFFCDD1D8)
 private val Accent = Color(0xFF3A63E8)
 private val AccentSoft = Color(0xFF8EABFF)
 private val AccentTint = Color(0x333A63E8)
@@ -230,6 +230,19 @@ private fun loadThumb(context: Context, uri: Uri, size: Int): Bitmap? {
     return bitmap
 }
 
+/** Decode only a display-sized bitmap; a camera photo must not exhaust the UI heap. */
+private fun decodeBackground(context: Context, uri: Uri): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+    return resolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+    }
+}
+
 // ---------- Saving and backups ----------
 
 private fun sanitizeName(name: String): String =
@@ -306,8 +319,11 @@ private fun MetaVaultApp() {
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
     val mainScrollState = rememberScrollState()
     var status by remember { mutableStateOf("Your files stay on this device.") }
-    val customPhotoBitmap by produceState<Bitmap?>(null, customPhotoUri) {
-        value = customPhotoUri?.let { raw -> withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(Uri.parse(raw))?.use { BitmapFactory.decodeStream(it) } }.getOrNull() } }
+    var customPhotoBitmap by remember(customPhotoUri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(customPhotoUri) {
+        customPhotoBitmap = customPhotoUri?.let { raw ->
+            withContext(Dispatchers.IO) { runCatching { decodeBackground(context, Uri.parse(raw)) }.getOrNull() }
+        }
     }
     val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -413,6 +429,13 @@ private fun MetaVaultApp() {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            // Keep SAF access for later backup restore where the provider allows it.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }.onFailure {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
             selectedUri = uri
             fileName = "No file selected"
             runCatching {
@@ -535,9 +558,11 @@ private fun MetaVaultApp() {
     }
 
     fun restoreBackup(entry: BackupEntry) {
+        if (busy) return
+        busy = true
         scope.launch {
             val bytes = withContext(Dispatchers.IO) { runCatching { entry.file.readBytes() }.getOrNull() }
-            if (bytes == null) { say("The backup file could not be read."); return@launch }
+            if (bytes == null) { busy = false; say("The backup file could not be read."); return@launch }
             overwriteOriginal(Uri.parse(entry.uriString), bytes, entry.name, "Original restored from backup")
         }
     }
@@ -580,7 +605,7 @@ private fun MetaVaultApp() {
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    StableGlassBottomBar(page = page, onPageSelected = { page = it })
+                    StableGlassBottomBar(page = page, onPageSelected = { if (!busy) page = it })
                 }
             ) { padding ->
                 Column(
@@ -623,7 +648,7 @@ private fun MetaVaultApp() {
                                         isImage = kind == MetadataEngine.Kind.IMAGE,
                                         convert = convert, onConvert = { convert = it }, output = output, onOutput = { output = it },
                                         busy = busy, status = status, ready = readyBytes != null,
-                                        onChangeFile = { page = Page.BROWSE },
+                                        onChangeFile = { if (!busy) page = Page.BROWSE },
                                         onClean = {
                                             val uri = selectedUri
                                             if (uri == null) { status = "Choose a file first." }
@@ -705,7 +730,7 @@ private fun MetaVaultApp() {
                                             )
                                         }
                                     )
-                                    Page.HISTORY -> HistoryPage(history, backups, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
+                                    Page.HISTORY -> HistoryPage(history, backups, busy = busy, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
                                     Page.SETTINGS -> SettingsPage(
                                         allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
                                         onThemeSelected = { selectedTheme = it; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
@@ -740,11 +765,16 @@ private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
         "Sunset" -> listOf(Color(0xFFE06A42), Color(0xFFE5A044), Color(0xFF8D3C83))
         "Rose" -> listOf(Color(0xFFC34F83), Color(0xFFEA8DAD), Color(0xFF653C9C))
         "Midnight" -> listOf(Color(0xFF34518D), Color(0xFF526A9D), Color(0xFF15233F))
-        "Monochrome" -> listOf(Color(0xFF657184), Color(0xFF9AA5B4), Color(0xFF344054))
+        "Monochrome" -> listOf(Color(0xFF686868), Color(0xFFA0A0A0), Color(0xFF383838))
         else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
     }
     Box(Modifier.fillMaxSize()) {
-        if (photo != null) Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.58f)
+        if (photo != null) {
+            Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            // A uniform neutral scrim keeps text readable without tinting the photo or cards.
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
+            return@Box
+        }
         Canvas(Modifier.fillMaxSize()) {
             val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
             val radius = size.minDimension * 0.78f
@@ -856,10 +886,10 @@ private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onP
             Pair(Page.DOCS, Icons.Default.Description)
         )
         items.chunked(2).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { (target, icon) ->
                     val (support, supported) = supportShort(target)
-                    VaultCard(Modifier.weight(1f).clickable { onCategory(target) }) {
+                    VaultCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
                         Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
                         Text((counts[categoryKey(target)] ?: 0).toString() + " files", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -882,7 +912,10 @@ private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onP
 @Composable
 private fun Thumb(uri: Uri, size: Int, modifier: Modifier, fallback: ImageVector) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val bitmap by produceState<Bitmap?>(null, uri) { value = withContext(Dispatchers.IO) { loadThumb(context, uri, size) } }
+    var bitmap by remember(uri, size) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri, size) {
+        bitmap = withContext(Dispatchers.IO) { loadThumb(context, uri, size) }
+    }
     Box(modifier.background(Surface2), contentAlignment = Alignment.Center) {
         val b = bitmap
         if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -934,7 +967,7 @@ private fun LibraryPage(
             }
             else -> LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(list, key = { it.uri.toString() }) { item ->
-                    VaultCard(Modifier.clickable { onOpen(item) }) {
+                    VaultCard(onClick = { onOpen(item) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(icon, null, tint = AccentSoft)
                             Spacer(Modifier.width(12.dp))
@@ -1026,7 +1059,7 @@ private fun CleanerPage(
                     Text(fileName, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(mime, color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = onChangeFile) { Text("Change") }
+                TextButton(onClick = onChangeFile, enabled = !busy) { Text("Change") }
             }
         }
         extra()
@@ -1108,7 +1141,7 @@ private fun ResultCard(
 // ---------- History, Settings, About ----------
 
 @Composable
-private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>, onRestore: (BackupEntry) -> Unit, onDeleteBackup: (BackupEntry) -> Unit) {
+private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>, busy: Boolean, onRestore: (BackupEntry) -> Unit, onDeleteBackup: (BackupEntry) -> Unit) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("History", "Exports from this session, and backups of originals you overwrote.")
@@ -1132,8 +1165,8 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
                     Text(b.name, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(dateFormat.format(Date(b.time)), color = Muted, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onRestore(b) }, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
-                        OutlinedButton(onClick = { onDeleteBackup(b) }, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
+                        OutlinedButton(onClick = { onRestore(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
+                        OutlinedButton(onClick = { onDeleteBackup(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
                     }
                 }
             }
@@ -1195,7 +1228,7 @@ private fun AboutPage() {
         VaultCard {
             InfoBullet("Originals stay safe", "Results are saved as a new file. Overwriting needs your confirmation and keeps a restorable backup.")
             InfoBullet("What can be cleaned", "JPG, PNG and WEBP images, MP3 audio, and DOCX, XLSX and PPTX documents.")
-            InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. XMP and IPTC blocks inside images are not covered yet.")
+            InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. Image cleaning covers supported EXIF, XMP, IPTC and container metadata blocks; embedded trailing content and invisible pixel watermarks are not removed.")
         }
         Text("Android beta. Features are being developed incrementally.", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
@@ -1220,8 +1253,8 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         else -> page
     }
     Box(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
-            .shadow(14.dp, shape).clip(shape)
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 5.dp)
+            .clip(shape)
             .background(Brush.linearGradient(listOf(
                 Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.14f)
             )))
@@ -1236,7 +1269,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
             val indicatorWidth = maxWidth / tabs.size
             val indicatorOffset by animateDpAsState(indicatorWidth * activeIndex,
                 animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
-            Box(Modifier.offset(x = indicatorOffset).width(indicatorWidth).fillMaxHeight()
+            Box(Modifier.offset { IntOffset(indicatorOffset.roundToPx(), 0) }.width(indicatorWidth).fillMaxHeight()
                 .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
                 .background(Color.White.copy(alpha = 0.16f))
             )
@@ -1272,19 +1305,19 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
 }
 
 @Composable
-private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+private fun VaultCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(20.dp)
-    // Keep caller interactions inside the rounded glass clip so ripples never form
-    // rectangular patches over the transparent surface.
-    Box(Modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
+    // No elevation layer behind translucent glass. Clip the interaction separately
+    // from caller layout modifiers so both the content and ripple stay rounded.
+    Box(modifier.fillMaxWidth().clip(shape)
         .background(Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.13f)
+            Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.035f), Color.White.copy(alpha = 0.07f)
         )))
         .border(1.dp, Brush.linearGradient(listOf(
             Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.20f),
             Color.White.copy(alpha = 0.28f)
         )), shape)
-        .then(modifier)) {
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Column(Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
