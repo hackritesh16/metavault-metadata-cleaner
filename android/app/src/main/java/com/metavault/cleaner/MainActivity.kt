@@ -1213,20 +1213,7 @@ private fun PageHeading(title: String, subtitle: String) {
 
 @Composable
 private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(24.dp)
-    Column(
-        modifier.fillMaxWidth()
-            .shadow(16.dp, shape)
-            .background(Brush.linearGradient(listOf(
-                Color(0xB8324562), Color(0xA91A2A42), Color(0xB8142238)
-            )), shape)
-            .border(1.dp, Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.34f), AccentSoft.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.07f)
-            )), shape)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp), content = content
-    )
+    LiquidGlassCard(modifier = modifier, content = content)
 }
 
 @Composable
