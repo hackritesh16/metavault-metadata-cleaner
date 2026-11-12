@@ -16,11 +16,18 @@ import android.graphics.Shader
 import android.os.Build
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.drawable.GradientDrawable
+import android.widget.FrameLayout
+import androidx.compose.ui.platform.ComposeView
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCompositionContext
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -47,7 +54,8 @@ internal fun LiquidGlassBottomBar(
     )
 }
 
-internal class LiquidGlassNavView(context: Context) : View(context) {
+internal class LiquidGlassNavView(context: Context, private val showNavigation: Boolean = true) : View(context) {
+    var captureTarget: View? = null
     var selectedIndex: Int = 0
         set(value) {
             field = value.coerceIn(0, 4)
@@ -97,21 +105,22 @@ internal class LiquidGlassNavView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         if (width <= 0 || height <= 0) return
-        val r = height * 0.40f
+        val r = if (showNavigation) height * 0.40f else 24f * density
         bounds.set(0f, 0f, width.toFloat(), height.toFloat())
         captureBackdropIfNeeded()
         drawGlass(canvas, r)
-        drawNavigation(canvas)
+        if (showNavigation) drawNavigation(canvas)
         // Keep the sampled backdrop fresh without forcing a 60fps full-window readback.
-        postInvalidateDelayed(100L)
+        postInvalidateDelayed(if (showNavigation) 100L else 220L)
     }
 
     private fun captureBackdropIfNeeded() {
-        if (captureInProgress || System.currentTimeMillis() - lastCaptureAt < 90L) return
+        if (captureInProgress || System.currentTimeMillis() - lastCaptureAt < if (showNavigation) 90L else 200L) return
         val root = rootView ?: return
         if (root.width <= 0 || root.height <= 0) return
         captureInProgress = true
-        val previousVisibility = visibility
+        val target = captureTarget ?: this
+        val previousVisibility = target.visibility
         try {
             val bw = max(1, (root.width * scale).toInt())
             val bh = max(1, (root.height * scale).toInt())
@@ -121,15 +130,15 @@ internal class LiquidGlassNavView(context: Context) : View(context) {
                 bitmapShader = BitmapShader(backdrop!!, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
                 runtimeShader = if (Build.VERSION.SDK_INT >= 33) createGlassShader() else null
             }
-            visibility = INVISIBLE
-            val target = Canvas(backdrop!!)
-            target.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-            target.scale(scale, scale)
-            root.draw(target)
-            visibility = previousVisibility
+            target.visibility = INVISIBLE
+            val captureCanvas = Canvas(backdrop!!)
+            captureCanvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+            captureCanvas.scale(scale, scale)
+            root.draw(captureCanvas)
+            target.visibility = previousVisibility
             lastCaptureAt = System.currentTimeMillis()
         } catch (_: Throwable) {
-            visibility = previousVisibility
+            target.visibility = previousVisibility
         } finally {
             captureInProgress = false
         }
@@ -343,4 +352,55 @@ internal class LiquidGlassNavView(context: Context) : View(context) {
             }
         """
     }
+}
+
+
+/**
+ * A card owns its foreground Compose subtree inside a native host. During
+ * backdrop sampling the whole host is temporarily hidden, so the captured
+ * image contains only the page behind the card (never a ghost copy of its text).
+ */
+@Composable
+internal fun LiquidGlassCard(
+    modifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    val parentComposition = rememberCompositionContext()
+    val latestContent = rememberUpdatedState(content)
+    AndroidView(
+        factory = { context ->
+            val host = FrameLayout(context).apply {
+                clipChildren = true
+                clipToPadding = true
+                background = GradientDrawable().apply {
+                    cornerRadius = 24f * context.resources.displayMetrics.density
+                    setColor(Color.TRANSPARENT)
+                }
+                clipToOutline = true
+            }
+            val glass = LiquidGlassNavView(context, showNavigation = false).apply {
+                captureTarget = host
+            }
+            host.addView(glass, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            ))
+            val foreground = ComposeView(context).apply {
+                setParentCompositionContext(parentComposition)
+                setContent {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        content = latestContent.value
+                    )
+                }
+            }
+            host.addView(foreground, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ))
+            host
+        },
+        modifier = modifier.fillMaxWidth()
+    )
 }
