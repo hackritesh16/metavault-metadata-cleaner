@@ -305,6 +305,7 @@ private fun MetaVaultApp() {
     var selectedTheme by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora") }
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
     val mainScrollState = rememberScrollState()
+    var status by remember { mutableStateOf("Your files stay on this device.") }
     val customPhotoBitmap by produceState<Bitmap?>(null, customPhotoUri) {
         value = customPhotoUri?.let { raw -> withContext(Dispatchers.IO) { runCatching { context.contentResolver.openInputStream(Uri.parse(raw))?.use { BitmapFactory.decodeStream(it) } }.getOrNull() } }
     }
@@ -322,7 +323,6 @@ private fun MetaVaultApp() {
     var convert by remember { mutableStateOf(false) }
     var output by remember { mutableStateOf("image/jpeg") }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Your files stay on this device.") }
     var readyBytes by remember { mutableStateOf<ByteArray?>(null) }
     var outBase by remember { mutableStateOf("metavault-clean") }
     var outExt by remember { mutableStateOf("jpg") }
