@@ -744,7 +744,7 @@ private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
         else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
     }
     Box(Modifier.fillMaxSize()) {
-        if (photo != null) Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.42f)
+        if (photo != null) Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alpha = 0.58f)
         Canvas(Modifier.fillMaxSize()) {
             val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
             val radius = size.minDimension * 0.78f
@@ -754,7 +754,7 @@ private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
             drawCircle(Brush.radialGradient(listOf(colors[1].copy(alpha = 0.24f), colors[1].copy(alpha = 0.07f), Color.Transparent), b, radius * 0.82f), radius * 0.82f, b)
             val c = Offset(size.width * 0.90f, size.height * 1.02f - shift * 0.42f)
             drawCircle(Brush.radialGradient(listOf(colors[2].copy(alpha = 0.22f), Color.Transparent), c, radius * 0.72f), radius * 0.72f, c)
-            drawRect(Color(0x99070D18))
+            drawRect(Color(0x55070D18))
         }
     }
 }
@@ -1223,7 +1223,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
             .shadow(14.dp, shape).clip(shape)
             .background(Brush.linearGradient(listOf(
-                Color(0xF01B2A40), Color(0xEA101B2D), Color(0xF01A2B43)
+                Color(0xA81B2A40), Color(0x94101B2D), Color(0xA81A2B43)
             )))
             .border(1.dp, Brush.linearGradient(listOf(
                 Color.White.copy(alpha = 0.32f), AccentSoft.copy(alpha = 0.20f),
@@ -1275,7 +1275,7 @@ private fun VaultCard(modifier: Modifier = Modifier, content: @Composable Column
     val shape = RoundedCornerShape(20.dp)
     Box(modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
         .background(Brush.linearGradient(listOf(
-            Color(0xE91A2940), Color(0xE6101B2D), Color(0xE91A2A42)
+            Color(0xA61A2940), Color(0x94101B2D), Color(0xA61A2A42)
         )))
         .border(1.dp, Brush.linearGradient(listOf(
             Color.White.copy(alpha = 0.26f), AccentSoft.copy(alpha = 0.18f),
