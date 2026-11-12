@@ -572,75 +572,7 @@ private fun MetaVaultApp() {
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    val navShape = RoundedCornerShape(24.dp)
-                    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        Box(
-                            Modifier.fillMaxWidth().height(58.dp)
-                                .shadow(20.dp, navShape)
-                                .clip(navShape)
-                                .background(Brush.linearGradient(listOf(
-                                    Color(0xC91A2940), Color(0xB8101B2D), Color(0xC91B2B43)
-                                )), navShape)
-                                .border(1.dp, Brush.linearGradient(listOf(
-                                    Color.White.copy(alpha = 0.38f), AccentSoft.copy(alpha = 0.24f),
-                                    Color.White.copy(alpha = 0.08f)
-                                )), navShape)
-                        ) {
-                            val activeTab = when (page) {
-                                Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
-                                Page.ABOUT -> Page.SETTINGS
-                                else -> page
-                            }
-                            Row(
-                                Modifier.fillMaxSize().padding(horizontal = 5.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
-                                    val icon = when (item) {
-                                        Page.HOME -> Icons.Default.Home
-                                        Page.BROWSE -> Icons.Default.FolderOpen
-                                        Page.CLEANER -> Icons.Default.AutoAwesome
-                                        Page.HISTORY -> Icons.Default.History
-                                        else -> Icons.Default.Settings
-                                    }
-                                    val selected = activeTab == item
-                                    Column(
-                                        Modifier.weight(1f).fillMaxHeight()
-                                            .clip(RoundedCornerShape(18.dp))
-                                            .clickable { page = item }
-                                            .padding(vertical = 2.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.Center
-                                    ) {
-                                        Box(
-                                            Modifier.clip(RoundedCornerShape(14.dp))
-                                                .background(if (selected) Accent.copy(alpha = 0.22f) else Color.Transparent)
-                                                .padding(horizontal = 13.dp, vertical = 3.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                icon, contentDescription = item.label,
-                                                tint = if (selected) Color.White else Muted,
-                                                modifier = Modifier.size(19.dp)
-                                            )
-                                        }
-                                        Text(
-                                            item.label, color = if (selected) AccentSoft else Muted,
-                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp)
-                                        )
-                                    }
-                                }
-                            }
-                            // Fine specular highlight along the top edge, like iOS liquid glass.
-                            Box(
-                                Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
-                                    .background(Brush.horizontalGradient(listOf(
-                                        Color.Transparent, Color.White.copy(alpha = 0.42f),
-                                        AccentSoft.copy(alpha = 0.30f), Color.Transparent
-                                    )))
-                            )
-                        }
-                    }
+                    StableGlassBottomBar(page = page, onPageSelected = { page = it })
                 }
             ) { padding ->
                 Column(
@@ -1212,8 +1144,73 @@ private fun PageHeading(title: String, subtitle: String) {
 }
 
 @Composable
+private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    val activeTab = when (page) {
+        Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+        Page.ABOUT -> Page.SETTINGS
+        else -> page
+    }
+    Box(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 5.dp)
+            .shadow(14.dp, shape).clip(shape)
+            .background(Brush.linearGradient(listOf(
+                Color(0xF01B2A40), Color(0xEA101B2D), Color(0xF01A2B43)
+            )))
+            .border(1.dp, Brush.linearGradient(listOf(
+                Color.White.copy(alpha = 0.32f), AccentSoft.copy(alpha = 0.20f),
+                Color.White.copy(alpha = 0.08f)
+            )), shape)
+    ) {
+        Row(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
+                val icon = when (item) {
+                    Page.HOME -> Icons.Default.Home
+                    Page.BROWSE -> Icons.Default.FolderOpen
+                    Page.CLEANER -> Icons.Default.AutoAwesome
+                    Page.HISTORY -> Icons.Default.History
+                    else -> Icons.Default.Settings
+                }
+                val selected = activeTab == item
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp))
+                    .clickable { onPageSelected(item) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.clip(RoundedCornerShape(14.dp))
+                        .background(if (selected) Accent.copy(alpha = 0.28f) else Color.Transparent)
+                        .padding(horizontal = 13.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = item.label,
+                            tint = if (selected) Color.White else Muted, modifier = Modifier.size(19.dp))
+                    }
+                    Text(item.label, color = if (selected) AccentSoft else Muted,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent,
+                Color.White.copy(alpha = 0.36f), AccentSoft.copy(alpha = 0.24f), Color.Transparent))))
+    }
+}
+
+@Composable
 private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    LiquidGlassCard(modifier = modifier, content = content)
+    val shape = RoundedCornerShape(20.dp)
+    Box(modifier.fillMaxWidth().shadow(10.dp, shape).clip(shape)
+        .background(Brush.linearGradient(listOf(
+            Color(0xE91A2940), Color(0xE6101B2D), Color(0xE91A2A42)
+        )))
+        .border(1.dp, Brush.linearGradient(listOf(
+            Color.White.copy(alpha = 0.26f), AccentSoft.copy(alpha = 0.18f),
+            Color.White.copy(alpha = 0.07f)
+        )), shape)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent,
+                Color.White.copy(alpha = 0.28f), AccentSoft.copy(alpha = 0.18f), Color.Transparent))))
+    }
 }
 
 @Composable
