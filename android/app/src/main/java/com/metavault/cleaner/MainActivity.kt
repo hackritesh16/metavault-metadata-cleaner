@@ -19,6 +19,7 @@ import android.provider.Settings
 import android.util.LruCache
 import android.util.Size
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
@@ -147,6 +148,20 @@ private fun categoryKey(page: Page) = when (page) {
     Page.PHOTOS -> "Photo"; Page.VIDEOS -> "Video"; Page.AUDIO -> "Audio"; Page.PDFS -> "PDF"; else -> "Document"
 }
 
+private fun permissionCategory(page: Page) = when (page) {
+    Page.PHOTOS -> MediaAccessPolicy.Category.PHOTOS
+    Page.VIDEOS -> MediaAccessPolicy.Category.VIDEOS
+    Page.AUDIO -> MediaAccessPolicy.Category.AUDIO
+    else -> MediaAccessPolicy.Category.DOCUMENTS
+}
+
+private fun mediaAccess(context: Context, page: Page): MediaAccessPolicy.Access {
+    val granted = listOf(MediaAccessPolicy.STORAGE, MediaAccessPolicy.IMAGES,
+        MediaAccessPolicy.VIDEO, MediaAccessPolicy.AUDIO, MediaAccessPolicy.SELECTED)
+        .filter { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }.toSet()
+    return MediaAccessPolicy.access(Build.VERSION.SDK_INT, permissionCategory(page), granted, hasAllFilesAccess())
+}
+
 // ---------- Device library ----------
 
 private fun hasAllFilesAccess(): Boolean = Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
@@ -154,9 +169,6 @@ private fun hasAllFilesAccess(): Boolean = Build.VERSION.SDK_INT >= 30 && Enviro
 private fun loadDeviceMedia(context: Context): List<DeviceMedia> {
     val resolver = context.contentResolver
     val results = mutableListOf<DeviceMedia>()
-    val allFiles = hasAllFilesAccess()
-    fun granted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
-    val partialVisual = Build.VERSION.SDK_INT >= 34 && granted(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
 
     // Each category has its own limit, so a large category (photos) can never hide the others.
     fun read(collection: Uri, category: String, allowed: Boolean, selection: String? = null, args: Array<String>? = null, limit: Int = 5000) {
@@ -179,23 +191,16 @@ private fun loadDeviceMedia(context: Context): List<DeviceMedia> {
         }
     }
 
-    val imagesOk: Boolean
-    val videosOk: Boolean
-    val audioOk: Boolean
-    if (Build.VERSION.SDK_INT >= 33) {
-        imagesOk = allFiles || granted(Manifest.permission.READ_MEDIA_IMAGES) || partialVisual
-        videosOk = allFiles || granted(Manifest.permission.READ_MEDIA_VIDEO) || partialVisual
-        audioOk = allFiles || granted(Manifest.permission.READ_MEDIA_AUDIO)
-    } else {
-        val legacy = allFiles || granted(Manifest.permission.READ_EXTERNAL_STORAGE)
-        imagesOk = legacy; videosOk = legacy; audioOk = legacy
-    }
+    val visualAccess = setOf(MediaAccessPolicy.Access.FULL, MediaAccessPolicy.Access.SELECTED)
+    val imagesOk = mediaAccess(context, Page.PHOTOS) in visualAccess
+    val videosOk = mediaAccess(context, Page.VIDEOS) in visualAccess
+    val audioOk = mediaAccess(context, Page.AUDIO) == MediaAccessPolicy.Access.FULL
     read(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "Photo", imagesOk)
     read(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, "Video", videosOk)
     read(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, "Audio", audioOk)
 
     // PDF and Office files are only listed by Android with all-files access (or on Android 9 and below).
-    val filesOk = allFiles || (Build.VERSION.SDK_INT < 30 && granted(Manifest.permission.READ_EXTERNAL_STORAGE))
+    val filesOk = mediaAccess(context, Page.DOCS) == MediaAccessPolicy.Access.FULL
     val files = MediaStore.Files.getContentUri("external")
     val nameCol = MediaStore.MediaColumns.DISPLAY_NAME
     read(files, "PDF", filesOk, "$nameCol LIKE ?", arrayOf("%.pdf"))
@@ -346,16 +351,21 @@ private fun MetaVaultApp() {
     var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
     var backups by remember { mutableStateOf(listOf<BackupEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
-    var libraryStatus by remember { mutableStateOf("Requesting media access…") }
     var libraryLoading by remember { mutableStateOf(false) }
-    var reloadTick by remember { mutableStateOf(0) }
+    var reloadTick by remember { mutableIntStateOf(0) }
+    var metadataReloadTick by remember { mutableIntStateOf(0) }
+    var requestedCategory by remember { mutableStateOf<Page?>(null) }
     var confirmOverwrite by remember { mutableStateOf(false) }
     val retryOverwrite = remember { mutableStateOf<(() -> Unit)?>(null) }
     var fields by remember { mutableStateOf<List<MetaField>?>(null) }
     var inspecting by remember { mutableStateOf(false) }
     var inspectError by remember { mutableStateOf<String?>(null) }
     val editValues = remember { mutableStateMapOf<String, String>() }
+    val hasLocationAccess = remember(reloadTick, metadataReloadTick) {
+        Build.VERSION.SDK_INT < 29 || context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
+    }
     val allFiles = remember(reloadTick) { hasAllFilesAccess() }
+    val accessByPage = remember(reloadTick) { LibraryPages.associateWith { mediaAccess(context, it) } }
     val counts = remember(deviceMedia) { deviceMedia.groupingBy { it.category }.eachCount() }
     val kind = if (selectedUri != null) MetadataEngine.kindOf(fileName, mime) else MetadataEngine.Kind.UNSUPPORTED
     val saveName = sanitizeName(outBase) + "." + outExt
@@ -365,6 +375,15 @@ private fun MetaVaultApp() {
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
             snackbar.showSnackbar(message)
+        }
+    }
+
+    BackHandler(enabled = page != Page.HOME || busy) {
+        if (busy) say("Please wait for the current file operation to finish.")
+        else page = when (page) {
+            in LibraryPages -> Page.BROWSE
+            Page.ABOUT -> Page.SETTINGS
+            else -> Page.HOME
         }
     }
 
@@ -382,12 +401,10 @@ private fun MetaVaultApp() {
         val (list, saved) = withContext(Dispatchers.IO) { loadDeviceMedia(context) to loadBackups(context) }
         deviceMedia = list
         backups = saved
-        libraryStatus = if (list.isEmpty()) "No accessible files found. Allow media access, and all-files access for PDF and Office files."
-        else "Loaded " + list.size + " files from device storage."
         libraryLoading = false
     }
 
-    LaunchedEffect(selectedUri) {
+    LaunchedEffect(selectedUri, hasLocationAccess) {
         val uri = selectedUri
         fields = null
         inspectError = null
@@ -406,18 +423,17 @@ private fun MetaVaultApp() {
 
     val mediaPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         reloadTick++
-        if (grants.values.none { it }) libraryStatus = "Media permission was denied. Use the system picker to select items manually."
+        if (grants.values.none { it }) say("Access was not granted. You can still use the file picker, or change access in Android Settings.")
     }
-    LaunchedEffect(Unit) {
-        val requested = buildList {
-            if (Build.VERSION.SDK_INT >= 33) {
-                add(Manifest.permission.READ_MEDIA_IMAGES); add(Manifest.permission.READ_MEDIA_VIDEO); add(Manifest.permission.READ_MEDIA_AUDIO)
-                if (Build.VERSION.SDK_INT >= 34) add(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
-            } else add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            if (Build.VERSION.SDK_INT >= 29) add(Manifest.permission.ACCESS_MEDIA_LOCATION)
-        }
-        val missing = requested.filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-        if (missing.isNotEmpty()) mediaPermissionLauncher.launch(missing.toTypedArray())
+    val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) metadataReloadTick++
+        else say("Location metadata access was not granted. Android may hide GPS fields.")
+    }
+    val openAppPermissions: () -> Unit = {
+        runCatching {
+            context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:${context.packageName}")))
+        }.onFailure { say("Could not open Android settings. Use the system file picker instead.") }
     }
 
     val openAllFilesAccess: () -> Unit = {
@@ -589,6 +605,23 @@ private fun MetaVaultApp() {
         ),
         typography = VaultTypography
     ) {
+        requestedCategory?.let { requested ->
+            AlertDialog(
+                onDismissRequest = { requestedCategory = null },
+                title = { Text("Access to ${requested.label.lowercase(Locale.ROOT)}") },
+                text = { Text("MetaVault uses this access to list ${requested.label.lowercase(Locale.ROOT)} on your device. Files stay local. You can choose selected items where Android supports it, or use the file picker without library access.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        requestedCategory = null
+                        mediaPermissionLauncher.launch(MediaAccessPolicy.permissions(
+                            Build.VERSION.SDK_INT, permissionCategory(requested)).toTypedArray())
+                    }) { Text("Continue") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { requestedCategory = null; picker.launch(arrayOf("*/*")) }) { Text("Use file picker") }
+                }
+            )
+        }
         if (confirmOverwrite) {
             AlertDialog(
                 onDismissRequest = { confirmOverwrite = false },
@@ -618,8 +651,10 @@ private fun MetaVaultApp() {
                         // Gallery pages use lazy lists, so they must not sit inside a scrolling column.
                         Box(Modifier.weight(1f)) {
                             LibraryPage(
-                                page = page, items = deviceMedia, loading = libraryLoading, status = libraryStatus,
-                                hasAllFiles = allFiles, onOpen = { openMedia(it) },
+                                page = page, items = deviceMedia, loading = libraryLoading,
+                                hasAllFiles = allFiles, access = accessByPage.getValue(page),
+                                onRequestAccess = { requestedCategory = page }, onAppPermissions = openAppPermissions,
+                                onOpen = { openMedia(it) },
                                 onSystemPick = {
                                     picker.launch(
                                         when (page) {
@@ -642,7 +677,7 @@ private fun MetaVaultApp() {
                             AnimatedContent(targetState = page, label = "page") { current ->
                                 when (current) {
                                     Page.HOME -> HomePage(onStart = { page = Page.BROWSE })
-                                    Page.BROWSE -> BrowsePage(counts = counts, onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) })
+                                    Page.BROWSE -> BrowsePage(counts = counts, accessByPage = accessByPage, onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) })
                                     Page.CLEANER -> CleanerPage(
                                         fileName = fileName, mime = mime, hasFile = selectedUri != null,
                                         isImage = kind == MetadataEngine.Kind.IMAGE,
@@ -695,9 +730,9 @@ private fun MetaVaultApp() {
                                             MetadataSection(
                                                 uri = selectedUri, fields = fields, inspecting = inspecting, inspectError = inspectError,
                                                 kind = kind, mime = mime,
-                                                locationMayBeHidden = Build.VERSION.SDK_INT >= 29 &&
-                                                    context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) != PackageManager.PERMISSION_GRANTED,
+                                                locationMayBeHidden = !hasLocationAccess,
                                                 edits = editValues, busy = busy,
+                                                onLocationAccess = { locationPermissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
                                                 onSaveEdits = {
                                                     val uri = selectedUri
                                                     if (uri != null) {
@@ -875,7 +910,7 @@ private fun HomePage(onStart: () -> Unit) {
 
 // Browse is the single place to start picking a file: one card per category, plus the system picker.
 @Composable
-private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onPick: () -> Unit) {
+private fun BrowsePage(counts: Map<String, Int>, accessByPage: Map<Page, MediaAccessPolicy.Access>, onCategory: (Page) -> Unit, onPick: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("Browse", "Open a category to see your files inside MetaVault.")
         val items = listOf(
@@ -892,7 +927,14 @@ private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onP
                     VaultCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
                         Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
-                        Text((counts[categoryKey(target)] ?: 0).toString() + " files", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        val count = counts[categoryKey(target)] ?: 0
+                        val countLabel = when (accessByPage[target]) {
+                            MediaAccessPolicy.Access.NONE -> "Access not granted"
+                            MediaAccessPolicy.Access.SELECTED -> "$count accessible files"
+                            MediaAccessPolicy.Access.PICKER -> "Use file picker"
+                            else -> "$count accessible files"
+                        }
+                        Text(countLabel, color = Muted, style = MaterialTheme.typography.bodySmall)
                         Text(support, color = if (supported) Clean else Muted, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
@@ -925,7 +967,8 @@ private fun Thumb(uri: Uri, size: Int, modifier: Modifier, fallback: ImageVector
 
 @Composable
 private fun LibraryPage(
-    page: Page, items: List<DeviceMedia>, loading: Boolean, status: String, hasAllFiles: Boolean,
+    page: Page, items: List<DeviceMedia>, loading: Boolean, hasAllFiles: Boolean,
+    access: MediaAccessPolicy.Access, onRequestAccess: () -> Unit, onAppPermissions: () -> Unit,
     onOpen: (DeviceMedia) -> Unit, onSystemPick: () -> Unit, onRefresh: () -> Unit, onAllFiles: () -> Unit
 ) {
     val category = categoryKey(page)
@@ -936,13 +979,27 @@ private fun LibraryPage(
             Box(Modifier.weight(1f)) { PageHeading(page.label, list.size.toString() + " files · " + supportShort(page).first) }
             TextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Refresh") }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = onSystemPick) { Text("File picker") }
+            if (access == MediaAccessPolicy.Access.NONE || access == MediaAccessPolicy.Access.SELECTED) {
+                OutlinedButton(onClick = onRequestAccess) {
+                    Text(if (access == MediaAccessPolicy.Access.SELECTED) "Manage access" else "Allow access")
+                }
+            }
+        }
+        if (access == MediaAccessPolicy.Access.SELECTED) {
+            Text("Only your selected photos/videos are accessible. Manage access to select more.", color = Muted, style = MaterialTheme.typography.bodySmall)
+        } else if (access == MediaAccessPolicy.Access.NONE) {
+            Text("Library access is not granted. Choose Allow access or pick an individual file.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onAppPermissions) { Text("App permission settings") }
+        }
         when {
             loading && list.isEmpty() -> VaultCard { Text("Loading…", color = Muted, style = MaterialTheme.typography.bodySmall) }
             list.isEmpty() -> VaultCard {
                 Text("No files to show", color = TextMain, style = MaterialTheme.typography.titleMedium)
-                Text(status, color = Muted, style = MaterialTheme.typography.bodySmall)
-                if (!hasAllFiles && (category == "PDF" || category == "Document")) {
-                    Text("Android only lists PDF and Office files when all-files access is allowed.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                Text(if (access == MediaAccessPolicy.Access.FULL) "No accessible files in this category. Try Refresh or the file picker." else "Files you allow MetaVault to access will appear here.", color = Muted, style = MaterialTheme.typography.bodySmall)
+                if (Build.VERSION.SDK_INT >= 30 && !hasAllFiles && (category == "PDF" || category == "Document")) {
+                    Text("Use the file picker without extra permissions. Optional all-files access can list documents on supported Android versions.", color = Muted, style = MaterialTheme.typography.bodySmall)
                     PrimaryButton("Allow all-files access", Icons.Default.Security, onAllFiles)
                 }
                 SecondaryButton("Use file picker", Icons.Default.FolderOpen, onSystemPick)
@@ -990,7 +1047,7 @@ private fun LibraryPage(
 private fun MetadataSection(
     uri: Uri?, fields: List<MetaField>?, inspecting: Boolean, inspectError: String?,
     kind: MetadataEngine.Kind, mime: String, locationMayBeHidden: Boolean,
-    edits: MutableMap<String, String>, busy: Boolean, onSaveEdits: () -> Unit
+    edits: MutableMap<String, String>, busy: Boolean, onLocationAccess: () -> Unit, onSaveEdits: () -> Unit
 ) {
     if (uri == null) return
     if (kind == MetadataEngine.Kind.IMAGE || mime.startsWith("video/")) {
@@ -1013,7 +1070,8 @@ private fun MetadataSection(
             }
         }
         if (kind == MetadataEngine.Kind.IMAGE && locationMayBeHidden) {
-            Text("Android may hide GPS location here until media-location access is allowed for MetaVault.", color = Warn, style = MaterialTheme.typography.bodySmall)
+            Text("Android may hide GPS location here. Optional location-metadata access reads location already stored in this photo; it does not track your device.", color = Warn, style = MaterialTheme.typography.bodySmall)
+            TextButton(onClick = onLocationAccess, enabled = !busy && !inspecting) { Text("Allow location metadata") }
         }
     }
     if (kind == MetadataEngine.Kind.IMAGE && fields != null && inspectError == null) {
