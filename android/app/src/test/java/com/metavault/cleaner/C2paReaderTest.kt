@@ -25,7 +25,9 @@ class C2paReaderTest {
     }
     private fun map(vararg kv: ByteArray) = byteArrayOf((0xA0 or (kv.size / 2)).toByte()) + cat(*kv)
     private fun array(vararg items: ByteArray) = byteArrayOf((0x80 or items.size).toByte()) + cat(*items)
-    private fun bytes(n: Int) = byteArrayOf((0x40 or n).toByte()) + ByteArray(n)
+    // CBOR byte string (major type 2). Lengths of 24 or more need the one-byte length form, 0x58 <len>.
+    private fun bytes(n: Int) =
+        (if (n < 24) byteArrayOf((0x40 or n).toByte()) else byteArrayOf(0x58, n.toByte())) + ByteArray(n)
 
     private val aiUrl = "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
 
