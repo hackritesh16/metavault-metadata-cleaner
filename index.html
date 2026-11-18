@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0A0F1A">
-  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#F2F4F8" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0A0F1A" media="(prefers-color-scheme: dark)">
+  <meta name="color-scheme" content="light dark">
   <meta name="description" content="MetaVault removes location, camera and author data from your photos. Everything runs in your browser and nothing is uploaded.">
   <title>MetaVault — Metadata Cleaner</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 28 28'%3E%3Crect width='28' height='28' rx='8' fill='%233A63E8'/%3E%3Ccircle cx='14' cy='14' r='7' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Ccircle cx='14' cy='14' r='2' fill='%23fff'/%3E%3Cpath d='M14 4v3M14 21v3M4 14h3M21 14h3' stroke='%23fff' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="preload" href="./fonts/bricolage-grotesque.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="./fonts/instrument-sans.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
@@ -28,7 +28,7 @@
       <div class="hero-copy">
         <h1>Share the photo, not where you took it.</h1>
         <p>Photos quietly record the location, time and device behind them. MetaVault saves a clean copy without that data, and your original stays untouched.</p>
-        <p class="hero-note">Works with JPG, PNG and WEBP today. Video, audio and PDF are planned.</p>
+        <p class="hero-note">The web version cleans JPG, PNG and WEBP. The Android app also handles MP3 and Office files.</p>
       </div>
 
       <div class="readout" role="img" aria-label="Example of data hidden inside a photo: camera model, date taken, GPS location, editing software and author, each covered by a black redaction bar.">
@@ -49,14 +49,6 @@
 
       <div class="step">
         <div class="step-head"><span class="step-num" aria-hidden="true">1</span><h2>Choose a file</h2></div>
-        <div class="type-grid" role="group" aria-label="File type">
-          <button class="type-card active" data-type="image" aria-pressed="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-4.5-4.5L6 21"/></svg><span>Images</span></button>
-          <button class="type-card" data-type="video" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="m16 10.5 5-3v9l-5-3"/></svg><span>Video</span><em class="soon">Soon</em></button>
-          <button class="type-card" data-type="audio" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg><span>Audio</span><em class="soon">Soon</em></button>
-          <button class="type-card" data-type="pdf" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg><span>PDF</span><em class="soon">Soon</em></button>
-          <button class="type-card" data-type="other" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Other</span><em class="soon">Soon</em></button>
-        </div>
-
         <label class="dropzone" id="dropzone" for="fileInput">
           <input id="fileInput" type="file" accept="image/jpeg,image/png,image/webp">
           <span class="upload-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></svg></span>
@@ -68,21 +60,26 @@
         <div id="filePanel" class="file-panel hidden">
           <div class="file-icon" id="fileThumb"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-4.5-4.5L6 21"/></svg></div>
           <div class="file-info"><b id="fileName">—</b><small id="fileMeta">—</small></div>
-          <span class="ready"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>Ready</span>
           <button id="removeFile" class="remove" aria-label="Remove file"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
         </div>
+
+        <section id="findings" class="findings hidden" aria-labelledby="findingsTitle" aria-live="polite">
+          <div class="findings-head"><h3 id="findingsTitle">Found in this file</h3><span id="findingsBadge" class="badge"></span></div>
+          <dl id="findingsList" class="findings-list"></dl>
+          <p id="findingsNote" class="findings-note"></p>
+        </section>
       </div>
 
       <div class="step">
         <div class="step-head"><span class="step-num" aria-hidden="true">2</span><h2>Choose what to remove</h2></div>
         <div class="options">
+          <div class="keep">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+            <div><b>Metadata is always removed</b><small>Location, camera, author and timestamps are left out of the clean copy.</small></div>
+          </div>
           <div class="option-row">
             <div><b>Keep original format and quality</b><small>Turn off to convert the clean copy to PNG, JPG or WEBP.</small></div>
             <label class="switch"><input id="preserve" type="checkbox" checked aria-label="Keep original format and quality"><span></span></label>
-          </div>
-          <div class="option-row">
-            <div><b>Remove all metadata</b><small>Location, camera, author and timestamps. Always on in this release.</small></div>
-            <label class="switch"><input id="strip" type="checkbox" checked disabled aria-label="Remove all metadata, always on"><span></span></label>
           </div>
           <div class="format-row">
             <div><b>Output format</b><small id="formatHint">Original format is retained</small></div>
@@ -127,6 +124,7 @@
       <span>Original files are never modified.</span>
     </footer>
   </main>
+  <script src="./vendor/exifr.full.umd.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>

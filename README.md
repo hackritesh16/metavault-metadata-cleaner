@@ -11,10 +11,11 @@ A privacy-first, responsive glassmorphism workspace for cleaning file metadata.
 **Image-cleaning MVP (JPG, PNG and WEBP).** The app runs entirely in the browser for the supported image workflow. Files are never sent to a server.
 
 ## Features
-- Vault-dark interface with self-hosted fonts (no third-party requests) and a responsive mobile layout
+- Follows the system light or dark appearance, built to Apple’s Human Interface Guidelines (44 px targets, semantic colors, system body font, Bricolage Grotesque headings self-hosted, no third-party requests) with a responsive mobile layout
 - File-type selector for images, video, audio, PDF and other documents
 - Drag-and-drop and local file picker
 - Image preview, file details and processing progress
+- "Found in this file" panel lists GPS location, camera, date taken, software, author and IP-like text before you clean. It is read on the device (web uses the bundled [exifr](https://github.com/MikeKovarik/exifr) library, MIT). Photos do not normally store an IP address, so only text that looks like one is flagged
 - Preserve-format / best-effort quality preference
 - Optional PNG, JPG or WEBP output conversion
 - Downloadable clean image copy and processing report

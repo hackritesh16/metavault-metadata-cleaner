@@ -12,7 +12,8 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-data class MetaField(val key: String, val value: String)
+/** [sensitive] marks details that reveal where a file came from (location, IP-like text, owner). */
+data class MetaField(val key: String, val value: String, val sensitive: Boolean = false)
 
 /** [removed] = fields actually removed, [remaining] = known fields still present after cleaning (re-checked). */
 class CleanResult(val bytes: ByteArray, val removed: Int, val remaining: Int, val note: String)
@@ -151,7 +152,7 @@ object MetadataEngine {
             DISPLAY_TAGS.forEach { (label, tag) ->
                 exif.getAttribute(tag)?.takeIf { it.isNotBlank() }?.let { out += MetaField(label, it) }
             }
-            exif.latLong?.let { out += MetaField("GPS position", String.format(Locale.US, "%.6f, %.6f", it[0], it[1])) }
+            exif.latLong?.let { out += MetaField("Location (GPS)", SensitiveScan.formatLocation(it[0], it[1])) }
             // Everything else ExifInterface can read, so the list matches what online EXIF viewers show.
             ALL_EXIF.forEach { (label, tag) ->
                 if (tag in DISPLAY_TAG_SET) return@forEach
@@ -412,12 +413,14 @@ object MetadataEngine {
 
     /** Returns the metadata currently inside the file. An empty list means none found, not that the format is unsupported. */
     fun inspect(context: Context, uri: Uri, name: String, mime: String): List<MetaField> =
-        when (kindOf(name, mime)) {
-            Kind.IMAGE -> inspectImage(load(context, uri))
-            Kind.OFFICE -> inspectOffice(load(context, uri))
-            Kind.MP3, Kind.OTHER_MEDIA -> inspectMedia(context, uri)
-            Kind.UNSUPPORTED -> emptyList()
-        }
+        SensitiveScan.annotate(
+            when (kindOf(name, mime)) {
+                Kind.IMAGE -> inspectImage(load(context, uri))
+                Kind.OFFICE -> inspectOffice(load(context, uri))
+                Kind.MP3, Kind.OTHER_MEDIA -> inspectMedia(context, uri)
+                Kind.UNSUPPORTED -> emptyList()
+            }
+        )
 
     /** Returns null when cleaning is not implemented for this format; the file is never touched in that case. */
     fun clean(context: Context, uri: Uri, name: String, mime: String): CleanResult? =
