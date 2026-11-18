@@ -1,22 +1,17 @@
 const $=s=>document.querySelector(s);
-let selectedFile=null,cleanedBlob=null,cleanedName='',activeType='image',previewUrl=null;
+let selectedFile=null,cleanedBlob=null,cleanedName='',previewUrl=null;
 const ICON_IMAGE='<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="1.6"/><path d="m21 15-4.5-4.5L6 21"/></svg>';
 const ICON_FILE='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>';
 const input=$('#fileInput'),drop=$('#dropzone'),processBtn=$('#process'),preserve=$('#preserve'),format=$('#format');
-const accept={image:'image/jpeg,image/png,image/webp',video:'video/mp4,video/quicktime,video/webm',audio:'audio/mpeg,audio/wav,audio/flac,audio/mp4',pdf:'application/pdf',other:'*/*'};
 function showNotice(msg){const n=$('#notice');n.textContent=msg;n.classList.remove('hidden');n.scrollIntoView({block:'nearest',behavior:'smooth'})}
 function hideNotice(){$('#notice').classList.add('hidden')}
-document.querySelectorAll('.type-card').forEach(btn=>btn.addEventListener('click',()=>{
- document.querySelectorAll('.type-card').forEach(x=>{x.classList.remove('active');x.setAttribute('aria-pressed','false')});btn.classList.add('active');btn.setAttribute('aria-pressed','true');activeType=btn.dataset.type;input.accept=accept[activeType]||'*/*';clearFile();
- $('#dropzone small').textContent=activeType==='image'?'JPG, PNG or WEBP. Processed in your browser, nothing is uploaded.':'This format is planned for a future release. Nothing will be uploaded.';
-}));
 function humanSize(n){if(n<1024)return n+' B';if(n<1048576)return(n/1024).toFixed(1)+' KB';return(n/1048576).toFixed(2)+' MB'}
 function setProgress(p,label){$('#progressWrap').classList.remove('hidden');$('#progressBar').style.width=p+'%';$('#progressPct').textContent=p+'%';$('#progressText').textContent=label}
 function clearProgress(){$('#progressWrap').classList.add('hidden');$('#progressBar').style.width='0%'}
 function clearFile(){selectedFile=null;cleanedBlob=null;input.value='';if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null}$('#fileThumb').innerHTML=ICON_IMAGE;$('#filePanel').classList.add('hidden');drop.classList.remove('hidden');processBtn.disabled=true;$('#result').classList.add('hidden');hideNotice();clearProgress();inspectToken++;$('#findings').classList.add('hidden')}
 function choose(file){
  if(!file)return;
- if(activeType==='image'&&!/^image\/(jpeg|png|webp)$/.test(file.type)){showNotice('This file isn’t supported. Choose a JPG, PNG or WEBP image.');return}
+ if(!/^image\/(jpeg|png|webp)$/.test(file.type)){showNotice('This file isn’t supported. Choose a JPG, PNG or WEBP image.');return}
  hideNotice();
  selectedFile=file;cleanedBlob=null;$('#fileName').textContent=file.name;$('#fileMeta').textContent=humanSize(file.size)+' · '+(file.type||'Unknown file type');
  if(previewUrl)URL.revokeObjectURL(previewUrl);
@@ -34,7 +29,7 @@ function outputExtension(mime){return mime==='image/jpeg'?'jpg':mime==='image/we
 function outputMime(){return preserve.checked?selectedFile.type:format.value}
 processBtn.addEventListener('click',async()=>{
  if(!selectedFile)return;
- if(activeType!=='image'||!selectedFile.type.startsWith('image/')){showNotice('This release cleans JPG, PNG and WEBP images only. Video, audio, PDF and document cleaning are coming later. Your file has not been uploaded.');return}
+ if(!selectedFile.type.startsWith('image/')){showNotice('This release cleans JPG, PNG and WEBP images only. Video, audio, PDF and document cleaning are coming later. Your file has not been uploaded.');return}
  hideNotice();
  processBtn.disabled=true;processBtn.innerHTML='<span class="spinner" aria-hidden="true"></span>Cleaning…';$('#result').classList.add('hidden');setProgress(12,'Reading image locally…');
  try{

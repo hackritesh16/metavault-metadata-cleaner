@@ -57,7 +57,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -76,34 +78,34 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Palette shared with the web app (see style.css).
-private val Bg = Color(0xFF0A0F1A)
-private val Surface1 = Color(0xFF0F1624)
-private val Surface2 = Color(0xFF141D2F)
-private val Line = Color(0xFF1F2A40)
-private val LineStrong = Color(0xFF33425F)
-private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFF97A3BA)
-private val Accent = Color(0xFF3A63E8)
-private val AccentSoft = Color(0xFF8EABFF)
-private val AccentTint = Color(0x333A63E8)
-private val Clean = Color(0xFF3DDC97)
-private val Warn = Color(0xFFFFB454)
+// Semantic colors shared with the web app (see style.css). They follow the system light or dark appearance.
+// MainActivity sets Pal.dark before composing; a system appearance change recreates the activity.
+private object Pal { var dark = true }
+private fun pick(dark: Long, light: Long) = Color(if (Pal.dark) dark else light)
+private val Bg get() = pick(0xFF0A0F1A, 0xFFF2F4F8)
+private val Surface1 get() = pick(0xFF121A2B, 0xFFFFFFFF)
+private val Surface2 get() = pick(0xFF1A2438, 0xFFF7F8FB)
+private val Line get() = pick(0xFF26334D, 0xFFD8DEE8)
+private val LineStrong get() = pick(0xFF3B4B6B, 0xFFB5BFCF)
+private val TextMain get() = pick(0xFFEEF2F8, 0xFF0B1018)
+private val Muted get() = pick(0xFFA9B4CA, 0xFF4B586D)
+private val Accent get() = pick(0xFF3A63E8, 0xFF2548C8)
+private val AccentSoft get() = pick(0xFF8EABFF, 0xFF2548C8)
+private val AccentTint get() = pick(0x248EABFF, 0x172548C8)
+private val Clean get() = pick(0xFF3DDC97, 0xFF0B6B40)
+private val OnClean get() = pick(0xFF04210F, 0xFFFFFFFF)
+private val Warn get() = pick(0xFFFFB86B, 0xFF8A4B00)
 private val Paper = Color(0xFFF3F5F8)
 private val PaperInk = Color(0xFF0B1018)
 private val PaperMuted = Color(0xFF4B586D)
 
-// Fonts are bundled in res/font so the app never downloads them.
+// Headings use Bricolage Grotesque, bundled in res/font so the app never downloads it. Body and data use system fonts.
 private val DisplayFont = FontFamily(
     Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
     Font(R.font.bricolage_grotesque_bold, FontWeight.Bold)
 )
-private val BodyFont = FontFamily(
-    Font(R.font.instrument_sans_regular, FontWeight.Normal),
-    Font(R.font.instrument_sans_medium, FontWeight.Medium),
-    Font(R.font.instrument_sans_semibold, FontWeight.SemiBold)
-)
-private val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
+private val BodyFont = FontFamily.Default
+private val MonoFont = FontFamily.Monospace
 
 private val VaultTypography = Typography(
     headlineLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 39.sp, letterSpacing = (-0.9).sp),
@@ -284,9 +286,14 @@ private fun loadBackups(context: Context): List<BackupEntry> {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(10, 15, 26)
-        window.navigationBarColor = android.graphics.Color.rgb(15, 22, 36)
-        window.decorView.systemUiVisibility = 0
+        val night = android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        Pal.dark = (resources.configuration.uiMode and night) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        window.statusBarColor = Bg.toArgb()
+        window.navigationBarColor = Surface1.toArgb()
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !Pal.dark
+            isAppearanceLightNavigationBars = !Pal.dark
+        }
         setContent { MetaVaultApp() }
     }
 }
@@ -535,12 +542,12 @@ private fun MetaVaultApp() {
     }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(
+        colorScheme = (if (Pal.dark) darkColorScheme() else lightColorScheme()).copy(
             background = Bg, surface = Surface1, surfaceVariant = Surface2,
             primary = Accent, onPrimary = Color.White,
-            secondary = AccentSoft, onSecondary = PaperInk,
+            secondary = AccentSoft, onSecondary = if (Pal.dark) PaperInk else Color.White,
             secondaryContainer = AccentTint, onSecondaryContainer = TextMain,
-            tertiary = Clean, onTertiary = Color(0xFF04210F),
+            tertiary = Clean, onTertiary = OnClean,
             onBackground = TextMain, onSurface = TextMain, onSurfaceVariant = Muted,
             outline = LineStrong, outlineVariant = Line
         ),
@@ -939,7 +946,13 @@ private fun MetadataSection(
         Thumb(uri, 720, Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(16.dp)), Icons.Default.Image)
     }
     VaultCard {
-        Text("Metadata in this file", color = TextMain, style = MaterialTheme.typography.titleMedium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Metadata in this file", color = TextMain, style = MaterialTheme.typography.titleMedium)
+            val sensitiveCount = fields?.count { it.sensitive } ?: 0
+            if (sensitiveCount > 0 && !inspecting) {
+                Text("$sensitiveCount sensitive " + (if (sensitiveCount == 1) "item" else "items"), color = Warn, style = MaterialTheme.typography.labelMedium)
+            }
+        }
         when {
             inspecting -> Text("Reading metadata…", color = Muted, style = MaterialTheme.typography.bodySmall)
             inspectError != null -> Text(inspectError, color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -949,10 +962,19 @@ private fun MetadataSection(
             else -> fields.forEachIndexed { index, f ->
                 if (index > 0) HorizontalDivider(color = Line)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(f.key, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.4f))
-                    Text(f.value, color = TextMain, fontFamily = MonoFont, fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+                    Row(Modifier.weight(0.4f), verticalAlignment = Alignment.CenterVertically) {
+                        if (f.sensitive) {
+                            Icon(Icons.Default.Warning, "Sensitive", tint = Warn, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(5.dp))
+                        }
+                        Text(f.key, color = if (f.sensitive) Warn else Muted, style = MaterialTheme.typography.bodySmall)
+                    }
+                    Text(f.value, color = if (f.sensitive) Warn else TextMain, fontFamily = MonoFont, fontSize = 12.sp, modifier = Modifier.weight(0.6f))
                 }
             }
+        }
+        if (fields?.any { it.key == SensitiveScan.IP_KEY } == true) {
+            Text("Photos don\u2019t normally store an IP address. MetaVault flags text that looks like one.", color = Muted, style = MaterialTheme.typography.bodySmall)
         }
         if (kind == MetadataEngine.Kind.IMAGE && locationMayBeHidden) {
             Text("Android may hide GPS location here until media-location access is allowed for MetaVault.", color = Warn, style = MaterialTheme.typography.bodySmall)
@@ -1061,7 +1083,7 @@ private fun ResultCard(
             value = outBase, onValueChange = onOutBase, label = { Text("File name") },
             suffix = { Text("." + outExt) }, singleLine = true, modifier = Modifier.fillMaxWidth()
         )
-        PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = Color(0xFF04210F))
+        PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = OnClean)
         OutlinedButton(
             onClick = onOverwrite, enabled = canOverwrite && !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
@@ -1233,7 +1255,7 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
             checked = checked, onCheckedChange = onChecked,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White, checkedTrackColor = Accent,
-                uncheckedThumbColor = Color(0xFFDCE4F8), uncheckedTrackColor = Color(0xFF3A4560),
+                uncheckedThumbColor = Color.White, uncheckedTrackColor = LineStrong,
                 uncheckedBorderColor = Color.Transparent
             )
         )
