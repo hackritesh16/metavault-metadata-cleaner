@@ -76,23 +76,27 @@ internal fun writeVerifiedCopy(
 ) {
     try {
         openWriter().use { it.write(bytes) }
-        openReader().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var offset = 0
-            while (offset < bytes.size) {
-                val n = input.read(buffer, 0, minOf(buffer.size, bytes.size - offset))
-                check(n > 0 && (0 until n).all { buffer[it] == bytes[offset + it] }) {
-                    "Saved copy differs from the prepared copy"
-                }
-                offset += n
-            }
-            check(input.read() == -1) { "Saved copy has unexpected trailing bytes" }
-        }
+        verifySavedBytes(bytes, openReader)
     } catch (failure: Exception) {
         if (!runCatching(deleteNew).getOrDefault(false)) {
             throw IllegalStateException("Could not verify or delete the new file. Check the output folder.", failure)
         }
         throw failure
+    }
+}
+
+internal fun verifySavedBytes(bytes: ByteArray, openReader: () -> InputStream) {
+    openReader().use { input ->
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var offset = 0
+        while (offset < bytes.size) {
+            val n = input.read(buffer, 0, minOf(buffer.size, bytes.size - offset))
+            check(n > 0 && (0 until n).all { buffer[it] == bytes[offset + it] }) {
+                "Saved copy differs from the prepared copy"
+            }
+            offset += n
+        }
+        check(input.read() == -1) { "Saved copy has unexpected trailing bytes" }
     }
 }
 
