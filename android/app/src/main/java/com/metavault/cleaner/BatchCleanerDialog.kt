@@ -180,14 +180,14 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
                 else Text("Choose a different name or skip. For a selected original, use its overwrite action. For limited gallery access, choose the destination with the folder picker.")
             } },
             confirmButton = { Column {
-                if (rename) TextButton(enabled = validStem(stem) && !stem.equals(conflict.stem, true),
+                if (rename) AuroraTextButton(enabled = validStem(stem) && !stem.equals(conflict.stem, true),
                     onClick = { model.choose(CollisionChoice.Rename(stem)) }) { Text("Use this name") }
                 else {
-                    TextButton(onClick = { rename = true }) { Text("Rename") }
-                    if (conflict.canOverwrite) TextButton(onClick = { model.choose(CollisionChoice.Overwrite) }) { Text("Overwrite") }
+                    AuroraTextButton(onClick = { rename = true }) { Text("Rename") }
+                    if (conflict.canOverwrite) AuroraTextButton(onClick = { model.choose(CollisionChoice.Overwrite) }) { Text("Overwrite") }
                 }
             } },
-            dismissButton = { TextButton(onClick = { model.choose(CollisionChoice.Skip) }) { Text("Skip") } }
+            dismissButton = { AuroraTextButton(onClick = { model.choose(CollisionChoice.Skip) }) { Text("Skip") } }
         )
         return
     }
@@ -200,8 +200,8 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
                 item { Text("Each listed original will be backed up in History before replacement.") }
                 items(model.selected.filter { it.format != null }) { Text(it.name) }
             } },
-            confirmButton = { TextButton(onClick = { confirmOriginals = false; model.start(null) }) { Text("Back up and overwrite") } },
-            dismissButton = { TextButton(onClick = { confirmOriginals = false }) { Text("Cancel") } })
+            confirmButton = { AuroraTextButton(onClick = { confirmOriginals = false; model.start(null) }) { Text("Back up and overwrite") } },
+            dismissButton = { AuroraTextButton(onClick = { confirmOriginals = false }) { Text("Cancel") } })
         return
     }
     val total = model.selected.size
@@ -235,7 +235,7 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
                             Text("Save mode", style = MaterialTheme.typography.labelLarge)
                             FilterChip(selected = !model.originals, onClick = { model.originals = false }, label = { Text("Save as new files") })
                             FilterChip(selected = model.originals, onClick = { model.originals = true }, label = { Text("Overwrite originals") })
-                            if (!model.originals) TextButton(onClick = model::renameAll) { Text("Rename all · add _clean") }
+                            if (!model.originals) AuroraTextButton(onClick = model::renameAll) { Text("Rename all · add _clean") }
                         }
                     }
                     items(model.selected, key = { it.uri.toString() }) { item ->
@@ -243,7 +243,7 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
                         else ExportNameField(model.stems[item.uri].orEmpty(), { model.stems[item.uri] = it },
                             item.extension, item.name)
                     }
-                    item { TextButton(onClick = { files.launch(arrayOf("*/*")) }) { Text("Change selection") } }
+                    item { AuroraTextButton(onClick = { files.launch(arrayOf("*/*")) }) { Text("Change selection") } }
                 }
                 items(model.results) { result ->
                     val (icon, label) = when (result.status) {
@@ -261,7 +261,7 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
                     HorizontalDivider(Modifier.padding(top = 8.dp))
                 }
                 if (model.finished && model.remaining().isNotEmpty()) {
-                    item { OutlinedButton(onClick = model::reviewRemaining, modifier = Modifier.fillMaxWidth()) {
+                    item { AuroraOutlinedButton(onClick = model::reviewRemaining, modifier = Modifier.fillMaxWidth()) {
                         Text("Review unfinished files (${model.remaining().size})")
                     } }
                 }
@@ -270,19 +270,19 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
         confirmButton = {
             when {
                 model.loading -> Text("Loading…")
-                model.running -> TextButton(enabled = !model.stopRequested, onClick = model::stop) {
+                model.running -> AuroraTextButton(enabled = !model.stopRequested, onClick = model::stop) {
                     Text(if (model.stopRequested) "Stopping…" else "Stop after this file")
                 }
-                model.finished || total == 0 -> TextButton(onClick = { files.launch(arrayOf("*/*")) }) {
+                model.finished || total == 0 -> AuroraTextButton(onClick = { files.launch(arrayOf("*/*")) }) {
                     Text(if (model.finished) "Choose another batch" else "Choose files")
                 }
-                model.originals -> TextButton(enabled = model.selected.any { it.format != null },
+                model.originals -> AuroraTextButton(enabled = model.selected.any { it.format != null },
                     onClick = { confirmOriginals = true }) { Text("Review originals") }
-                else -> TextButton(enabled = model.selected.filter { it.format != null }.all { validStem(model.stems[it.uri].orEmpty()) },
+                else -> AuroraTextButton(enabled = model.selected.filter { it.format != null }.all { validStem(model.stems[it.uri].orEmpty()) },
                     onClick = { folder.launch(null) }) { Text("Choose output folder") }
             }
         },
-        dismissButton = { if (!model.running) TextButton(onClick = { model.visible = false }) { Text("Close") } }
+        dismissButton = { if (!model.running) AuroraTextButton(onClick = { model.visible = false }) { Text("Close") } }
     )
 }
 

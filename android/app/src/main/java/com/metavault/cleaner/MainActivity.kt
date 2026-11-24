@@ -1,6 +1,7 @@
 package com.metavault.cleaner
 
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -21,6 +22,8 @@ import android.provider.MediaStore
 import android.provider.Settings
 import android.util.LruCache
 import android.util.Size
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -56,17 +59,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -81,46 +81,6 @@ import java.io.FileNotFoundException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-// Palette shared with the web app (see style.css).
-private val Bg = Color(0xFF0A0F1A)
-private val Surface1 = Color(0xFF0F1624)
-private val Surface2 = Color(0xFF141D2F)
-private val Line = Color(0xFF1F2A40)
-private val LineStrong = Color(0xFF33425F)
-private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFFD5D9E0)
-private val Accent = Color(0xFF285BEA)
-private val AccentSoft = Color(0xFF9DB5FF)
-private val AccentTint = Color(0x333A63E8)
-private val Clean = Color(0xFF3DDC97)
-private val Warn = Color(0xFFFFB454)
-private val PaperInk = Color(0xFF0B1018)
-
-// Fonts are bundled in res/font so the app never downloads them.
-private val DisplayFont = FontFamily(
-    Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
-    Font(R.font.bricolage_grotesque_bold, FontWeight.Bold)
-)
-private val BodyFont = FontFamily(
-    Font(R.font.instrument_sans_regular, FontWeight.Normal),
-    Font(R.font.instrument_sans_medium, FontWeight.Medium),
-    Font(R.font.instrument_sans_semibold, FontWeight.SemiBold)
-)
-private val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
-
-private val VaultTypography = Typography(
-    headlineLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 39.sp, letterSpacing = (-0.9).sp),
-    headlineMedium = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 32.sp, letterSpacing = (-0.6).sp),
-    titleLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp, letterSpacing = (-0.3).sp),
-    titleMedium = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp, letterSpacing = (-0.2).sp),
-    bodyLarge = TextStyle(fontFamily = BodyFont, fontSize = 16.sp, lineHeight = 24.sp),
-    bodyMedium = TextStyle(fontFamily = BodyFont, fontSize = 14.sp, lineHeight = 21.sp),
-    bodySmall = TextStyle(fontFamily = BodyFont, fontSize = 13.sp, lineHeight = 18.sp),
-    labelLarge = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 14.sp, lineHeight = 20.sp),
-    labelMedium = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = BodyFont, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp)
-)
 
 private enum class Page(val label: String) {
     HOME("Home"), BROWSE("Browse"), PHOTOS("Photos"), VIDEOS("Videos"),
@@ -278,9 +238,8 @@ private fun loadBackups(context: Context): List<BackupEntry> {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = android.graphics.Color.rgb(10, 15, 26)
-        window.navigationBarColor = android.graphics.Color.rgb(15, 22, 36)
-        window.decorView.systemUiVisibility = 0
+        enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
         setContent { MetaVaultApp(batch) }
     }
@@ -560,18 +519,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         }
     }
 
-    MaterialTheme(
-        colorScheme = darkColorScheme(
-            background = Bg, surface = Surface1, surfaceVariant = Surface2,
-            primary = Accent, onPrimary = Color.White,
-            secondary = AccentSoft, onSecondary = PaperInk,
-            secondaryContainer = AccentTint, onSecondaryContainer = TextMain,
-            tertiary = Clean, onTertiary = Color(0xFF04210F),
-            onBackground = TextMain, onSurface = TextMain, onSurfaceVariant = Muted,
-            outline = LineStrong, outlineVariant = Line
-        ),
-        typography = VaultTypography
-    ) {
+    AuroraTheme {
         BatchCleanerDialog(batch)
         requestedCategory?.let { requested ->
             AlertDialog(
@@ -579,14 +527,14 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                 title = { Text("Access to ${requested.label.lowercase(Locale.ROOT)}") },
                 text = { Text("MetaVault uses this access to list ${requested.label.lowercase(Locale.ROOT)} on your device. Files stay local. You can choose selected items where Android supports it, or use the file picker without library access.") },
                 confirmButton = {
-                    TextButton(onClick = {
+                    AuroraTextButton(onClick = {
                         requestedCategory = null
                         mediaPermissionLauncher.launch(MediaAccessPolicy.permissions(
                             Build.VERSION.SDK_INT, permissionCategory(requested)).toTypedArray())
                     }) { Text("Continue") }
                 },
                 dismissButton = {
-                    TextButton(onClick = { requestedCategory = null; picker.launch(arrayOf("*/*")) }) { Text("Use file picker") }
+                    AuroraTextButton(onClick = { requestedCategory = null; picker.launch(arrayOf("*/*")) }) { Text("Use file picker") }
                 }
             )
         }
@@ -596,25 +544,22 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                 containerColor = Surface2,
                 title = { Text("Overwrite original?") },
                 text = { Text("$fileName will be replaced by the processed version. MetaVault first stores a backup inside the app, and you can restore it from History.") },
-                confirmButton = { TextButton(onClick = { confirmOverwrite = false; startOverwrite() }) { Text("Overwrite", color = Warn) } },
-                dismissButton = { TextButton(onClick = { confirmOverwrite = false }) { Text("Cancel") } }
+                confirmButton = { AuroraTextButton(onClick = { confirmOverwrite = false; startOverwrite() }) { Text("Overwrite", color = Warn) } },
+                dismissButton = { AuroraTextButton(onClick = { confirmOverwrite = false }) { Text("Cancel") } }
             )
         }
         Box(Modifier.fillMaxSize().background(Bg)) {
-            LiquidBackdrop(theme = selectedTheme, scrollOffset = mainScrollState.value.toFloat(),
+            AuroraBackground(theme = selectedTheme, scrollOffset = { mainScrollState.value.toFloat() },
                 photo = customPhotoBitmap, showTheme = previewThemes || customPhotoBitmap != null)
             Scaffold(
                 containerColor = Color.Transparent,
+                contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
                     StableGlassBottomBar(page = page, onPageSelected = { if (!busy) page = it })
                 }
             ) { padding ->
-                Column(
-                    Modifier.fillMaxSize().padding(padding).statusBarsPadding()
-                        .padding(horizontal = 18.dp).padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
+                AuroraContentFrame(padding) {
                     Header()
                     if (page in LibraryPages) {
                         // Gallery pages use lazy lists, so they must not sit inside a scrolling column.
@@ -769,41 +714,6 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     }
 }
 
-
-@Composable
-private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?, showTheme: Boolean) {
-    val colors = when (theme) {
-        "Ocean" -> listOf(Color(0xFF087EAA), Color(0xFF16C5C0), Color(0xFF173A85))
-        "Violet" -> listOf(Color(0xFF7042C8), Color(0xFFB45BDB), Color(0xFF253A91))
-        "Emerald" -> listOf(Color(0xFF087B63), Color(0xFF52C878), Color(0xFF145B8C))
-        "Sunset" -> listOf(Color(0xFFE06A42), Color(0xFFE5A044), Color(0xFF8D3C83))
-        "Rose" -> listOf(Color(0xFFC34F83), Color(0xFFEA8DAD), Color(0xFF653C9C))
-        "Midnight" -> listOf(Color(0xFF34518D), Color(0xFF526A9D), Color(0xFF15233F))
-        "Monochrome" -> listOf(Color(0xFF686868), Color(0xFFA0A0A0), Color(0xFF383838))
-        else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
-    }
-    Box(Modifier.fillMaxSize().background(if (showTheme) Bg else Color(0xFF080A0E))) {
-        if (photo != null) {
-            Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            // A uniform neutral scrim keeps text readable without tinting the photo or cards.
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
-            return@Box
-        }
-        if (!showTheme) return@Box
-        Canvas(Modifier.fillMaxSize()) {
-            val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
-            val radius = size.minDimension * 0.78f
-            val a = Offset(size.width * 0.84f, size.height * 0.10f - shift)
-            drawCircle(Brush.radialGradient(listOf(colors[0].copy(alpha = 0.40f), colors[0].copy(alpha = 0.10f), Color.Transparent), a, radius), radius, a)
-            val b = Offset(size.width * 0.08f, size.height * 0.72f + shift * 0.72f)
-            drawCircle(Brush.radialGradient(listOf(colors[1].copy(alpha = 0.24f), colors[1].copy(alpha = 0.07f), Color.Transparent), b, radius * 0.82f), radius * 0.82f, b)
-            val c = Offset(size.width * 0.90f, size.height * 1.02f - shift * 0.42f)
-            drawCircle(Brush.radialGradient(listOf(colors[2].copy(alpha = 0.22f), Color.Transparent), c, radius * 0.72f), radius * 0.72f, c)
-            drawRect(Color(0x33070D18))
-        }
-    }
-}
-
 @Composable
 private fun BrandMark(markSize: Dp) {
     Canvas(Modifier.size(markSize)) {
@@ -828,13 +738,7 @@ private fun Header() {
             Spacer(Modifier.width(10.dp))
             Text("MetaVault", color = TextMain, fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 21.sp, letterSpacing = (-0.4).sp)
         }
-        Surface(color = Color.Transparent, shape = RoundedCornerShape(50), border = BorderStroke(1.dp, LineStrong)) {
-            Row(Modifier.padding(horizontal = 12.dp, vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(7.dp).background(Clean, RoundedCornerShape(50)))
-                Spacer(Modifier.width(8.dp))
-                Text("On device", color = Muted, style = MaterialTheme.typography.bodySmall)
-            }
-        }
+        AuroraStatusChip("On device", Clean)
     }
 }
 
@@ -844,8 +748,8 @@ private fun HomePage(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Inspect your files", "Choose a file to see its metadata and available cleaning options.")
-        PrimaryButton("Inspect a file", Icons.Default.Search, onInspect)
-        VaultCard(onClick = onBatch) {
+        AuroraGlassButton("Inspect a file", Icons.Default.Search, onInspect)
+        AuroraGlassCard(onClick = onBatch) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Icon(Icons.Default.Collections, null, tint = AccentSoft)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -855,9 +759,9 @@ private fun HomePage(
                 Icon(Icons.Default.ChevronRight, null, tint = Muted)
             }
         }
-        SecondaryButton("Browse by category", Icons.Default.FolderOpen, onBrowse)
+        AuroraGlassButton("Browse by category", Icons.Default.FolderOpen, onBrowse, primary = false)
         if (currentName != null) {
-            VaultCard(onClick = onResumeFile) {
+            AuroraGlassCard(onClick = onResumeFile) {
                 Text("Continue with current file", color = Muted, style = MaterialTheme.typography.labelLarge)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(currentName, modifier = Modifier.weight(1f), color = TextMain,
@@ -885,8 +789,8 @@ private fun BrowsePage(counts: Map<String, Int>, accessByPage: Map<Page, MediaAc
             Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 rowItems.forEach { (target, icon) ->
                     val (support, supported) = supportShort(target)
-                    VaultCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
-                        Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
+                    AuroraGlassCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
+                        AuroraIconContainer(icon)
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
                         val count = counts[categoryKey(target)] ?: 0
                         val countLabel = when (accessByPage[target]) {
@@ -902,10 +806,10 @@ private fun BrowsePage(counts: Map<String, Int>, accessByPage: Map<Page, MediaAc
                 if (rowItems.size == 1) Spacer(Modifier.weight(1f))
             }
         }
-        VaultCard {
+        AuroraGlassCard {
             Text("Somewhere else?", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text("Use Android's file picker for anything that is not listed above.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            SecondaryButton("Open file picker", Icons.Default.FolderOpen, onPick)
+            AuroraGlassButton("Open file picker", Icons.Default.FolderOpen, onPick, primary = false)
         }
     }
 }
@@ -950,14 +854,14 @@ private fun LibraryPage(
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Box(Modifier.weight(1f)) { PageHeading(page.label, list.size.toString() + " files · " + supportShort(page).first) }
-            TextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Refresh") }
+            AuroraTextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Refresh") }
         }
         if (files.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(query, { query = it }, Modifier.weight(1f),
                     label = { Text("Search filenames") }, singleLine = true)
                 Box {
-                    TextButton(onClick = { choosingOrder = true }) { Text(order) }
+                    AuroraTextButton(onClick = { choosingOrder = true }) { Text(order) }
                     DropdownMenu(choosingOrder, { choosingOrder = false }) {
                         listOf("Newest first", "Name A–Z", "Largest first").forEach { option ->
                             DropdownMenuItem(text = { Text(option) }, onClick = { order = option; choosingOrder = false })
@@ -967,9 +871,9 @@ private fun LibraryPage(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onSystemPick) { Text("File picker") }
+            AuroraOutlinedButton(onClick = onSystemPick) { Text("File picker") }
             if (access == MediaAccessPolicy.Access.NONE || access == MediaAccessPolicy.Access.SELECTED) {
-                OutlinedButton(onClick = onRequestAccess) {
+                AuroraOutlinedButton(onClick = onRequestAccess) {
                     Text(if (access == MediaAccessPolicy.Access.SELECTED) "Manage access" else "Allow access")
                 }
             }
@@ -978,22 +882,22 @@ private fun LibraryPage(
             Text("Only your selected photos/videos are accessible. Manage access to select more.", color = Muted, style = MaterialTheme.typography.bodySmall)
         } else if (access == MediaAccessPolicy.Access.NONE) {
             Text("Library access is not granted. Choose Allow access or pick an individual file.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onAppPermissions) { Text("App permission settings") }
+            AuroraTextButton(onClick = onAppPermissions) { Text("App permission settings") }
         }
         when {
-            loading && list.isEmpty() -> VaultCard { Text("Loading…", color = Muted, style = MaterialTheme.typography.bodySmall) }
-            files.isNotEmpty() && list.isEmpty() -> VaultCard {
+            loading && list.isEmpty() -> AuroraGlassCard { Text("Loading…", color = Muted, style = MaterialTheme.typography.bodySmall) }
+            files.isNotEmpty() && list.isEmpty() -> AuroraGlassCard {
                 Text("No matching filenames", color = TextMain)
-                TextButton(onClick = { query = "" }) { Text("Clear search") }
+                AuroraTextButton(onClick = { query = "" }) { Text("Clear search") }
             }
-            list.isEmpty() -> VaultCard {
+            list.isEmpty() -> AuroraGlassCard {
                 Text("No files to show", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text(if (access == MediaAccessPolicy.Access.FULL) "No accessible files in this category. Try Refresh or the file picker." else "Files you allow MetaVault to access will appear here.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (Build.VERSION.SDK_INT >= 30 && !hasAllFiles && (category == "PDF" || category == "Document")) {
                     Text("Use the file picker without extra permissions. Optional all-files access can list documents on supported Android versions.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                    PrimaryButton("Allow all-files access", Icons.Default.Security, onAllFiles)
+                    AuroraGlassButton("Allow all-files access", Icons.Default.Security, onAllFiles)
                 }
-                SecondaryButton("Use file picker", Icons.Default.FolderOpen, onSystemPick)
+                AuroraGlassButton("Use file picker", Icons.Default.FolderOpen, onSystemPick, primary = false)
             }
             category == "Photo" || category == "Video" -> LazyVerticalGrid(
                 columns = GridCells.Adaptive(104.dp), modifier = Modifier.weight(1f),
@@ -1017,7 +921,7 @@ private fun LibraryPage(
             }
             else -> LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(list, key = { it.uri.toString() }) { item ->
-                    VaultCard(onClick = { onOpen(item) }) {
+                    AuroraGlassCard(onClick = { onOpen(item) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(icon, null, tint = AccentSoft)
                             Spacer(Modifier.width(12.dp))
@@ -1046,7 +950,7 @@ private fun MetadataSection(
     if (kind == MetadataEngine.Kind.IMAGE || mime.startsWith("video/")) {
         Thumb(uri, 720, Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(16.dp)), Icons.Default.Image)
     }
-    VaultCard {
+    AuroraGlassCard {
         Text("Metadata in this file", color = TextMain, style = MaterialTheme.typography.titleMedium)
         when {
             inspecting -> Text("Reading metadata…", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -1058,17 +962,17 @@ private fun MetadataSection(
                 if (index > 0) HorizontalDivider(color = Line)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(f.key, color = Muted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(0.4f))
-                    Text(f.value, color = TextMain, fontFamily = MonoFont, fontSize = 12.sp, modifier = Modifier.weight(0.6f))
+                    Text(f.value, color = TextMain, style = TechnicalLabel, modifier = Modifier.weight(0.6f))
                 }
             }
         }
         if (kind == MetadataEngine.Kind.IMAGE && locationMayBeHidden) {
             Text("Android may hide GPS location here. Optional location-metadata access reads location already stored in this photo; it does not track your device.", color = Warn, style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = onLocationAccess, enabled = !busy && !inspecting) { Text("Allow location metadata") }
+            AuroraTextButton(onClick = onLocationAccess, enabled = !busy && !inspecting) { Text("Allow location metadata") }
         }
     }
     if (kind == MetadataEngine.Kind.IMAGE && fields != null && inspectError == null) {
-        VaultCard {
+        AuroraGlassCard {
             Text("Edit image metadata", color = TextMain, style = MaterialTheme.typography.titleMedium)
             MetadataEngine.EDITABLE_IMAGE_TAGS.keys.forEach { label ->
                 OutlinedTextField(
@@ -1077,7 +981,8 @@ private fun MetadataSection(
                 )
             }
             Text("Date format: 2026:11:11 14:30:00. An empty field removes that tag.", color = Muted, style = MaterialTheme.typography.bodySmall)
-            SecondaryButton(if (busy) "Working…" else "Apply edits to a copy", Icons.Default.Edit) { if (!busy) onSaveEdits() }
+            AuroraGlassButton(if (busy) "Working…" else "Apply edits to a copy", Icons.Default.Edit, onSaveEdits,
+                primary = false, enabled = !busy)
         }
     }
 }
@@ -1093,19 +998,19 @@ private fun CleanerPage(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("Cleaner", "Review what is inside a file, then save a clean copy.")
-        OutlinedButton(onClick = onBatch, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        AuroraOutlinedButton(onClick = onBatch, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text("Batch clean files")
         }
         if (!hasFile) {
-            VaultCard {
+            AuroraGlassCard {
                 Icon(Icons.Default.AutoAwesome, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
                 Text("No file selected", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text("Pick a photo, MP3 or Office file from Browse to get started.", color = Muted, style = MaterialTheme.typography.bodySmall)
-                PrimaryButton("Choose a file", Icons.Default.FolderOpen, onChangeFile)
+                AuroraGlassButton("Choose a file", Icons.Default.FolderOpen, onChangeFile)
             }
             return@Column
         }
-        VaultCard {
+        AuroraGlassCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.InsertDriveFile, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
                 Spacer(Modifier.width(12.dp))
@@ -1113,12 +1018,12 @@ private fun CleanerPage(
                     Text(fileName, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(mime, color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = onChangeFile, enabled = !busy) { Text("Change") }
+                AuroraTextButton(onClick = onChangeFile, enabled = !busy) { Text("Change") }
             }
         }
         extra()
         if (isImage) {
-            VaultCard {
+            AuroraGlassCard {
                 SettingRow("Convert to another format", "Re-encodes the image, so pixels may change slightly", convert, onConvert)
                 if (convert) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1132,18 +1037,8 @@ private fun CleanerPage(
                 }
             }
         }
-        Button(
-            onClick = onClean, enabled = !busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Accent, contentColor = Color.White,
-                disabledContainerColor = Accent.copy(alpha = 0.45f), disabledContentColor = Color.White.copy(alpha = 0.75f)
-            )
-        ) {
-            if (busy) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp) else Icon(Icons.Default.AutoAwesome, null)
-            Spacer(Modifier.width(9.dp))
-            Text(if (busy) "Working…" else "Remove metadata", fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        }
+        AuroraGlassButton(if (busy) "Working…" else "Remove metadata", Icons.Default.AutoAwesome, onClean,
+            enabled = !busy, loading = busy)
         AnimatedVisibility(ready) { result() }
         Text(status, color = if (ready) Clean else Muted, style = MaterialTheme.typography.bodySmall)
     }
@@ -1170,21 +1065,21 @@ private fun ResultCard(
             }
         }
         ExportNameField(outBase, onOutBase, outExt, "File name", enabled = !busy)
-        TextButton(onClick = { onOutBase(cleanStem(outBase)) }, enabled = !busy && validStem(outBase)) { Text("Add _clean") }
+        AuroraTextButton(onClick = { onOutBase(cleanStem(outBase)) }, enabled = !busy && validStem(outBase)) { Text("Add _clean") }
         Button(onClick = onSaveNew, enabled = !busy && validStem(outBase), modifier = Modifier.fillMaxWidth()) {
             Text(if (isImageExt(outExt)) "Save as new image in folder" else "Save as new file in folder")
         }
-        if (onGallery != null) OutlinedButton(onClick = onGallery, enabled = !busy && validStem(outBase),
+        if (onGallery != null) AuroraOutlinedButton(onClick = onGallery, enabled = !busy && validStem(outBase),
             modifier = Modifier.fillMaxWidth()) { Text("Save to Pictures/MetaVault") }
-        OutlinedButton(
+        AuroraOutlinedButton(
             onClick = onOverwrite, enabled = canOverwrite && !busy,
-            modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = AuroraLayout.actionHeight), shape = AuroraLayout.buttonShape,
             border = BorderStroke(1.dp, if (canOverwrite) Warn else LineStrong),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Warn, disabledContentColor = Muted)
         ) {
             Icon(Icons.Default.Warning, null)
             Spacer(Modifier.width(9.dp))
-            Text("Overwrite original", fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text("Overwrite original", style = MaterialTheme.typography.labelLarge)
         }
         Text(
             if (canOverwrite) "Choose a folder to save a copy. For an existing name, choose Overwrite, Rename or Skip. Replacements are backed up in History."
@@ -1202,14 +1097,14 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("History", "Exports from this session, and backups of originals you overwrote.")
         if (history.isEmpty() && backups.isEmpty()) {
-            VaultCard {
+            AuroraGlassCard {
                 Icon(Icons.Default.History, null, tint = AccentSoft, modifier = Modifier.size(32.dp))
                 Text("Nothing here yet", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text("Saved copies will appear here. The export list is kept in memory for this session only.", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
         history.forEach {
-            VaultCard {
+            AuroraGlassCard {
                 Text(it.name, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
                 Text(it.detail, color = Muted, style = MaterialTheme.typography.bodySmall)
             }
@@ -1217,12 +1112,12 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
         if (backups.isNotEmpty()) {
             Text("Backups", color = TextMain, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 6.dp))
             backups.forEach { b ->
-                VaultCard {
+                AuroraGlassCard {
                     Text(b.name, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(dateFormat.format(Date(b.time)), color = Muted, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onRestore(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
-                        OutlinedButton(onClick = { onDeleteBackup(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
+                        AuroraOutlinedButton(onClick = { onRestore(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
+                        AuroraOutlinedButton(onClick = { onDeleteBackup(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
                     }
                 }
             }
@@ -1240,11 +1135,11 @@ private fun SettingsPage(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Settings", "Personalise your MetaVault experience.")
-        VaultCard {
+        AuroraGlassCard {
             Text("Appearance & themes", color = TextMain, style = MaterialTheme.typography.titleMedium)
             Text("The glass stays neutral; themes only change the background.", color = Muted, style = MaterialTheme.typography.bodySmall)
             SettingRow("Preview theme backgrounds", "Show the chosen theme behind the glass", previewThemes, onPreviewThemes)
-            val themes = listOf("Aurora", "Ocean", "Violet", "Emerald", "Sunset", "Rose", "Midnight", "Monochrome")
+            val themes = AuroraThemeNames
             themes.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     pair.forEach { theme ->
@@ -1259,10 +1154,10 @@ private fun SettingsPage(
             SettingsAction("Use your own photo", "Set an image from your gallery as the app background", Icons.Default.Image, onCustomPhoto)
             if (hasCustomPhoto) {
                 Text("Your custom photo is active.", color = Clean, style = MaterialTheme.typography.bodySmall)
-                TextButton(onClick = onClearPhoto) { Text("Remove custom photo") }
+                AuroraTextButton(onClick = onClearPhoto) { Text("Remove custom photo") }
             }
         }
-        VaultCard {
+        AuroraGlassCard {
             SettingsAction(
                 "All-files access",
                 if (allFiles) "Allowed. PDF and Office files are listed in Browse." else "Not allowed. Needed only to list PDF and Office files.",
@@ -1278,12 +1173,12 @@ private fun SettingsPage(
 private fun AboutPage() {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("About MetaVault", "A private workspace for cleaner file sharing.")
-        VaultCard {
+        AuroraGlassCard {
             BrandMark(48.dp)
             Text("MetaVault", color = TextMain, style = MaterialTheme.typography.headlineMedium)
             Text("Files can carry hidden details such as capture time, device, location and author names. MetaVault shows what is inside, lets you edit image fields, and saves a cleaner copy. All processing happens on your device and nothing is uploaded.", color = Muted, style = MaterialTheme.typography.bodyMedium)
         }
-        VaultCard {
+        AuroraGlassCard {
             InfoBullet("Originals stay safe", "Results are saved as a new file. Overwriting needs your confirmation and keeps a restorable backup.")
             InfoBullet("What can be cleaned", "JPG, PNG and WEBP images, MP3 audio, and DOCX, XLSX and PPTX documents.")
             InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. Image cleaning covers supported EXIF, XMP, IPTC and container metadata blocks; embedded trailing content and invisible pixel watermarks are not removed.")
@@ -1310,106 +1205,41 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         Page.ABOUT -> Page.SETTINGS
         else -> page
     }
-    Box(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 5.dp)
-            .clip(shape)
-            .background(Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.025f), Color.White.copy(alpha = 0.05f)
-            )))
-            .border(1.dp, Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.16f),
-                Color.White.copy(alpha = 0.22f)
-            )), shape)
-    ) {
-        BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp)) {
+    Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(
+        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(Modifier.widthIn(max = AuroraLayout.barMaxWidth).fillMaxWidth()
+            .padding(horizontal = AuroraLayout.padding, vertical = AuroraLayout.small)
+            .auroraGlass(shape).padding(AuroraLayout.small)) {
             val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
-            val activeIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
-            val indicatorWidth = maxWidth / tabs.size
-            val indicatorOffset by animateDpAsState(indicatorWidth * activeIndex,
+            val tabWidth = maxWidth / tabs.size
+            val offset by animateDpAsState(tabWidth * tabs.indexOf(activeTab).coerceAtLeast(0),
                 animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
-            Box(Modifier.offset { IntOffset(indicatorOffset.roundToPx(), 0) }.width(indicatorWidth).fillMaxHeight()
-                .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.10f))
-            )
-            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-            tabs.forEach { item ->
-                val icon = when (item) {
-                    Page.HOME -> Icons.Default.Home
-                    Page.BROWSE -> Icons.Default.FolderOpen
-                    Page.CLEANER -> Icons.Default.AutoAwesome
-                    Page.HISTORY -> Icons.Default.History
-                    else -> Icons.Default.Settings
-                }
-                val selected = activeTab == item
-                Column(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(18.dp))
-                    .selectable(selected, role = androidx.compose.ui.semantics.Role.Tab) { onPageSelected(item) },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center) {
-                    Box(Modifier.clip(RoundedCornerShape(14.dp))
-                        .padding(horizontal = 13.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
-                        Icon(icon, contentDescription = null,
-                            tint = if (selected) Color.White else Muted, modifier = Modifier.size(19.dp))
+            Box(Modifier.matchParentSize()) {
+                Box(Modifier.offset { IntOffset(offset.roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+                    .background(Color.White.copy(alpha = 0.10f), AuroraLayout.buttonShape))
+            }
+            Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                tabs.forEach { item ->
+                    val icon = when (item) {
+                        Page.HOME -> Icons.Default.Home
+                        Page.BROWSE -> Icons.Default.FolderOpen
+                        Page.CLEANER -> Icons.Default.AutoAwesome
+                        Page.HISTORY -> Icons.Default.History
+                        else -> Icons.Default.Settings
                     }
-                    Text(item.label, color = if (selected) AccentSoft else Muted,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp))
+                    val selected = activeTab == item
+                    Column(Modifier.weight(1f).heightIn(min = AuroraLayout.touchTarget).clip(AuroraLayout.buttonShape)
+                        .selectable(selected, role = androidx.compose.ui.semantics.Role.Tab) { onPageSelected(item) },
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center) {
+                        Icon(icon, null, tint = if (selected) TextMain else Muted, modifier = Modifier.size(20.dp))
+                        Text(item.label, color = if (selected) AccentSoft else Muted,
+                            style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                    }
                 }
             }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
-            .background(Brush.horizontalGradient(listOf(Color.Transparent,
-                Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.12f), Color.Transparent))))
-        }
-    }
-}
-
-@Composable
-private fun VaultCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
-    val shape = RoundedCornerShape(20.dp)
-    // No elevation layer behind translucent glass. Clip the interaction separately
-    // from caller layout modifiers so both the content and ripple stay rounded.
-    Box(modifier.fillMaxWidth().clip(shape)
-        .background(Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.025f), Color.White.copy(alpha = 0.055f)
-        )))
-        .border(1.dp, Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.16f),
-            Color.White.copy(alpha = 0.24f)
-        )), shape)
-        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
-        Column(Modifier.fillMaxWidth().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
-        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
-            .background(Brush.horizontalGradient(listOf(Color.Transparent,
-                Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.16f), Color.Transparent))))
-    }
-}
-
-@Composable
-private fun PrimaryButton(
-    label: String, icon: ImageVector, onClick: () -> Unit,
-    container: Color = Accent, content: Color = Color.White
-) {
-    Button(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContentColor = content)
-    ) {
-        Icon(icon, null)
-        Spacer(Modifier.width(9.dp))
-        Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-    }
-}
-
-@Composable
-private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    OutlinedButton(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-        shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, LineStrong),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
-    ) {
-        Icon(icon, null)
-        Spacer(Modifier.width(9.dp))
-        Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
     }
 }
 
@@ -1447,7 +1277,7 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
             checked = checked, onCheckedChange = onChecked,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White, checkedTrackColor = Accent,
-                uncheckedThumbColor = Color(0xFFDCE4F8), uncheckedTrackColor = Color(0xFF3A4560),
+                uncheckedThumbColor = TextMain, uncheckedTrackColor = Line,
                 uncheckedBorderColor = Color.Transparent
             )
         )
