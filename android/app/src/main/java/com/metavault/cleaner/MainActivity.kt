@@ -288,7 +288,26 @@ private fun saveToGallery(context: Context, bytes: ByteArray, displayName: Strin
     return uri
 }
 
-private fun backupOriginal(context: Context, uri: Uri, name: String): File {
+/** An image this app already saved under [name] in Pictures/MetaVault, if there is one. */
+@androidx.annotation.RequiresApi(29)
+private fun findGalleryImage(context: Context, name: String): Uri? {
+    val folder = Environment.DIRECTORY_PICTURES + "/MetaVault/"
+    context.contentResolver.query(
+        MediaStore.Images.Media.EXTERNAL_CONTENT_URI, arrayOf(MediaStore.Images.Media._ID),
+        MediaStore.Images.Media.DISPLAY_NAME + "=? AND " + MediaStore.Images.Media.RELATIVE_PATH + "=?",
+        arrayOf(name, folder), null
+    )?.use { c ->
+        if (c.moveToFirst()) return android.content.ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, c.getLong(0))
+    }
+    return null
+}
+
+/** Replaces an image saved earlier. Android refuses with a SecurityException when the file belongs to another app. */
+private fun replaceGalleryImage(context: Context, uri: Uri, bytes: ByteArray) {
+    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Could not open the existing image for writing")
+}
+
+internal fun backupOriginal(context: Context, uri: Uri, name: String): File {
     val dir = File(context.filesDir, "backups").apply { mkdirs() }
     val file = File(dir, System.currentTimeMillis().toString() + "__" + sanitizeName(name) + ".bak")
     context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { out -> input.copyTo(out) } }
@@ -362,6 +381,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     var metadataReloadTick by remember { mutableIntStateOf(0) }
     var requestedCategory by remember { mutableStateOf<Page?>(null) }
     var confirmOverwrite by remember { mutableStateOf(false) }
+    var saveConflict by remember { mutableStateOf<String?>(null) }
     val retryOverwrite = remember { mutableStateOf<(() -> Unit)?>(null) }
     var fields by remember { mutableStateOf<List<MetaField>?>(null) }
     var inspecting by remember { mutableStateOf(false) }
@@ -402,6 +422,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         lifecycle?.addObserver(observer)
         onDispose { lifecycle?.removeObserver(observer) }
     }
+    LaunchedEffect(batch.finished) { if (batch.finished) reloadTick++ }
     LaunchedEffect(reloadTick) {
         libraryLoading = true
         val (list, saved) = withContext(Dispatchers.IO) { loadDeviceMedia(context) to loadBackups(context) }
@@ -561,19 +582,43 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         }
     }
 
-    fun saveAsNew() {
+    fun saveAsNew(choice: ConflictChoice? = null) {
         val bytes = readyBytes ?: return
         if (isImageExt(outExt) && Build.VERSION.SDK_INT >= 29) {
             scope.launch {
                 busy = true; status = "Saving new image…"
+                val wanted = saveName
+                val existing = withContext(Dispatchers.IO) { runCatching { findGalleryImage(context, wanted) }.getOrNull() }
+                if (existing != null && choice == null) {
+                    // Same name already in Pictures/MetaVault: let the user decide.
+                    saveConflict = wanted
+                    busy = false
+                    return@launch
+                }
                 runCatching {
-                    withContext(Dispatchers.IO) { saveToGallery(context, bytes, saveName, mimeForExt(outExt)) }
-                }.onSuccess {
-                    say("Saved as a new image in Pictures/MetaVault. Original file is untouched.")
-                    history = listOf(HistoryEntry(saveName, "$lastAction (new image)")) + history
-                    readyBytes = null
-                    reloadTick++
-                }.onFailure { say("Save failed: ${it.message}") }
+                    withContext(Dispatchers.IO) {
+                        when (val target = decideTarget(wanted, existing != null, choice) { findGalleryImage(context, it) != null }) {
+                            SaveTarget.Skip -> null
+                            is SaveTarget.Write -> {
+                                if (target.replaceExisting && existing != null) replaceGalleryImage(context, existing, bytes)
+                                else saveToGallery(context, bytes, target.name, mimeForExt(outExt))
+                                target.name
+                            }
+                        }
+                    }
+                }.onSuccess { savedAs ->
+                    if (savedAs == null) say("Nothing was saved. A file with that name already exists.")
+                    else {
+                        say(if (savedAs == wanted && existing != null) "Replaced $savedAs in Pictures/MetaVault. Original file is untouched."
+                            else "Saved as $savedAs in Pictures/MetaVault. Original file is untouched.")
+                        history = listOf(HistoryEntry(savedAs, "$lastAction (new image)")) + history
+                        readyBytes = null
+                        reloadTick++
+                    }
+                }.onFailure {
+                    say(if (it is SecurityException) "Android does not allow replacing that file. Choose Rename to keep both."
+                        else "Save failed: ${it.message}")
+                }
                 busy = false
             }
         } else saver.launch(saveName)
@@ -627,6 +672,21 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                 dismissButton = {
                     TextButton(onClick = { requestedCategory = null; picker.launch(arrayOf("*/*")) }) { Text("Use file picker") }
                 }
+            )
+        }
+        saveConflict?.let { existingName ->
+            AlertDialog(
+                onDismissRequest = { saveConflict = null },
+                containerColor = Surface2,
+                title = { Text("File already exists") },
+                text = { Text("$existingName is already in Pictures/MetaVault. Overwrite it, save this one under a new name, or skip?") },
+                confirmButton = {
+                    Row {
+                        TextButton(onClick = { saveConflict = null; saveAsNew(ConflictChoice.RENAME) }) { Text("Rename") }
+                        TextButton(onClick = { saveConflict = null; saveAsNew(ConflictChoice.OVERWRITE) }) { Text("Overwrite", color = Warn) }
+                    }
+                },
+                dismissButton = { TextButton(onClick = { saveConflict = null; say("Nothing was saved.") }) { Text("Skip") } }
             )
         }
         if (confirmOverwrite) {
@@ -688,6 +748,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                         currentName = selectedUri?.let { fileName },
                                         onInspect = { picker.launch(arrayOf("*/*")) },
                                         onBrowse = { page = Page.BROWSE },
+                                        onBatch = { batch.visible = true },
                                         onResumeFile = { page = Page.CLEANER }
                                     )
                                     Page.BROWSE -> BrowsePage(counts = counts, accessByPage = accessByPage, onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) })
@@ -731,7 +792,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                                         }
                                                     }.onSuccess { (bytes, ext, note) ->
                                                         readyBytes = bytes
-                                                        outBase = fileName.substringBeforeLast('.', fileName) + "-clean"
+                                                        outBase = withCleanBase(fileName.substringBeforeLast('.', fileName))
                                                         outExt = ext
                                                         lastAction = "Clean copy saved"
                                                         status = "Cleaned copy prepared. Original is untouched. " + note
@@ -876,12 +937,13 @@ private fun Header() {
 
 @Composable
 private fun HomePage(
-    currentName: String?, onInspect: () -> Unit, onBrowse: () -> Unit, onResumeFile: () -> Unit
+    currentName: String?, onInspect: () -> Unit, onBrowse: () -> Unit, onBatch: () -> Unit, onResumeFile: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Inspect your files", "Choose a file to see its metadata and available cleaning options.")
         PrimaryButton("Inspect a file", Icons.Default.Search, onInspect)
         SecondaryButton("Browse by category", Icons.Default.FolderOpen, onBrowse)
+        SecondaryButton("Clean many files at once", Icons.Default.Collections, onBatch)
         if (currentName != null) {
             VaultCard(onClick = onResumeFile) {
                 Text("Continue with current file", color = Muted, style = MaterialTheme.typography.labelLarge)
@@ -1180,6 +1242,7 @@ private fun ResultCard(
     outBase: String, onOutBase: (String) -> Unit, outExt: String, canOverwrite: Boolean,
     busy: Boolean, onSaveNew: () -> Unit, onOverwrite: () -> Unit
 ) {
+    val hasClean = outBase.endsWith(CLEAN_SUFFIX)
     Column(
         Modifier.fillMaxWidth()
             .background(Clean.copy(alpha = 0.08f), RoundedCornerShape(18.dp))
@@ -1199,6 +1262,9 @@ private fun ResultCard(
             value = outBase, onValueChange = onOutBase, label = { Text("File name") },
             suffix = { Text("." + outExt) }, singleLine = true, modifier = Modifier.fillMaxWidth()
         )
+        TextButton(onClick = { onOutBase(withCleanBase(outBase)) }, enabled = !hasClean && !busy) {
+            Text(if (hasClean) "Name ends with $CLEAN_SUFFIX" else "Add $CLEAN_SUFFIX to the name")
+        }
         PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = Color(0xFF04210F))
         OutlinedButton(
             onClick = onOverwrite, enabled = canOverwrite && !busy,

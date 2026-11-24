@@ -70,24 +70,27 @@ internal fun prepareBatchCopy(
     }
 }
 
+/** Throws unless [input] holds exactly [bytes]. */
+internal fun verifyBytes(bytes: ByteArray, input: InputStream) {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var offset = 0
+    while (offset < bytes.size) {
+        val n = input.read(buffer, 0, minOf(buffer.size, bytes.size - offset))
+        check(n > 0 && (0 until n).all { buffer[it] == bytes[offset + it] }) {
+            "Saved copy differs from the prepared copy"
+        }
+        offset += n
+    }
+    check(input.read() == -1) { "Saved copy has unexpected trailing bytes" }
+}
+
 /** The destination must be a newly created document. Reopen it after closing the writer. */
 internal fun writeVerifiedCopy(
     bytes: ByteArray, openWriter: () -> OutputStream, openReader: () -> InputStream, deleteNew: () -> Boolean
 ) {
     try {
         openWriter().use { it.write(bytes) }
-        openReader().use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var offset = 0
-            while (offset < bytes.size) {
-                val n = input.read(buffer, 0, minOf(buffer.size, bytes.size - offset))
-                check(n > 0 && (0 until n).all { buffer[it] == bytes[offset + it] }) {
-                    "Saved copy differs from the prepared copy"
-                }
-                offset += n
-            }
-            check(input.read() == -1) { "Saved copy has unexpected trailing bytes" }
-        }
+        openReader().use { verifyBytes(bytes, it) }
     } catch (failure: Exception) {
         if (!runCatching(deleteNew).getOrDefault(false)) {
             throw IllegalStateException("Could not verify or delete the new file. Check the output folder.", failure)
