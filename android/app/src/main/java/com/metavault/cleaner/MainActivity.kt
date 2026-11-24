@@ -1,5 +1,9 @@
 package com.metavault.cleaner
 
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.saveable.rememberSaveable
 import android.Manifest
 import android.app.Activity
 import android.content.ContentValues
@@ -88,9 +92,9 @@ private val Surface2 = Color(0xFF141D2F)
 private val Line = Color(0xFF1F2A40)
 private val LineStrong = Color(0xFF33425F)
 private val TextMain = Color(0xFFEEF2F8)
-private val Muted = Color(0xFFCDD1D8)
-private val Accent = Color(0xFF3A63E8)
-private val AccentSoft = Color(0xFF8EABFF)
+private val Muted = Color(0xFFD5D9E0)
+private val Accent = Color(0xFF285BEA)
+private val AccentSoft = Color(0xFF9DB5FF)
 private val AccentTint = Color(0x333A63E8)
 private val Clean = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB454)
@@ -132,7 +136,7 @@ private enum class Page(val label: String) {
 private val LibraryPages = setOf(Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS)
 
 private data class HistoryEntry(val name: String, val detail: String)
-private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String)
+private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String, val size: Long?, val modified: Long?)
 private data class BackupEntry(val file: File, val name: String, val uriString: String, val time: Long)
 
 /** One place that says what each category supports; used by the Browse cards and the gallery header. */
@@ -173,18 +177,22 @@ private fun loadDeviceMedia(context: Context): List<DeviceMedia> {
     // Each category has its own limit, so a large category (photos) can never hide the others.
     fun read(collection: Uri, category: String, allowed: Boolean, selection: String? = null, args: Array<String>? = null, limit: Int = 5000) {
         if (!allowed) return
-        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE)
+        val projection = arrayOf(MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.MIME_TYPE,
+            MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED)
         runCatching {
             resolver.query(collection, projection, selection, args, MediaStore.MediaColumns.DATE_MODIFIED + " DESC")?.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns._ID)
                 val nameCol = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
                 val mimeCol = cursor.getColumnIndex(MediaStore.MediaColumns.MIME_TYPE)
+                val sizeCol = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                val dateCol = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_MODIFIED)
+                fun number(col: Int) = if (col >= 0 && !cursor.isNull(col)) cursor.getLong(col) else null
                 var count = 0
                 while (cursor.moveToNext() && count < limit) {
                     val id = cursor.getLong(idCol)
                     val name = cursor.getString(nameCol) ?: "Unnamed file"
                     val mime = if (mimeCol >= 0) cursor.getString(mimeCol) ?: "application/octet-stream" else "application/octet-stream"
-                    results.add(DeviceMedia(android.content.ContentUris.withAppendedId(collection, id), name, mime, category))
+                    results.add(DeviceMedia(android.content.ContentUris.withAppendedId(collection, id), name, mime, category, number(sizeCol), number(dateCol)))
                     count++
                 }
             }
@@ -322,6 +330,7 @@ private fun MetaVaultApp() {
     var page by remember { mutableStateOf(Page.HOME) }
     var selectedTheme by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora") }
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
+    var previewThemes by remember { mutableStateOf(true) }
     val mainScrollState = rememberScrollState()
     var status by remember { mutableStateOf("Your files stay on this device.") }
     var customPhotoBitmap by remember(customPhotoUri) { mutableStateOf<Bitmap?>(null) }
@@ -633,7 +642,8 @@ private fun MetaVaultApp() {
             )
         }
         Box(Modifier.fillMaxSize().background(Bg)) {
-            LiquidBackdrop(theme = selectedTheme, scrollOffset = mainScrollState.value.toFloat(), photo = customPhotoBitmap)
+            LiquidBackdrop(theme = selectedTheme, scrollOffset = mainScrollState.value.toFloat(),
+                photo = customPhotoBitmap, showTheme = previewThemes || customPhotoBitmap != null)
             Scaffold(
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
@@ -768,6 +778,7 @@ private fun MetaVaultApp() {
                                     Page.HISTORY -> HistoryPage(history, backups, busy = busy, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
                                     Page.SETTINGS -> SettingsPage(
                                         allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
+                                        previewThemes = previewThemes, onPreviewThemes = { previewThemes = it },
                                         onThemeSelected = { selectedTheme = it; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
                                         onCustomPhoto = { backgroundPicker.launch(arrayOf("image/*")) },
                                         onClearPhoto = { customPhotoUri = null; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().remove("background_photo").apply() },
@@ -792,7 +803,7 @@ private fun MetaVaultApp() {
 
 
 @Composable
-private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
+private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?, showTheme: Boolean) {
     val colors = when (theme) {
         "Ocean" -> listOf(Color(0xFF087EAA), Color(0xFF16C5C0), Color(0xFF173A85))
         "Violet" -> listOf(Color(0xFF7042C8), Color(0xFFB45BDB), Color(0xFF253A91))
@@ -803,13 +814,14 @@ private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
         "Monochrome" -> listOf(Color(0xFF686868), Color(0xFFA0A0A0), Color(0xFF383838))
         else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
     }
-    Box(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxSize().background(if (showTheme) Bg else Color(0xFF080A0E))) {
         if (photo != null) {
             Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             // A uniform neutral scrim keeps text readable without tinting the photo or cards.
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
             return@Box
         }
+        if (!showTheme) return@Box
         Canvas(Modifier.fillMaxSize()) {
             val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
             val radius = size.minDimension * 0.78f
@@ -861,10 +873,14 @@ private fun Header() {
 // The one memorable moment: example metadata that gets covered by redaction bars.
 @Composable
 private fun RedactionCard() {
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(600)
-        progress.animateTo(1f, tween(durationMillis = 2200))
+    val reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
+    val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
+    LaunchedEffect(reduceMotion) {
+        if (reduceMotion) progress.snapTo(1f)
+        else {
+            delay(600)
+            progress.animateTo(1f, tween(durationMillis = 2200))
+        }
     }
     val rows = listOf(
         "Camera" to "Pixel 8 Pro",
@@ -875,8 +891,8 @@ private fun RedactionCard() {
     )
     Column(Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("IMG_4821.jpg", color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
-            Text("Example data", color = PaperMuted, style = MaterialTheme.typography.bodySmall)
+            Text("PHOTO_METADATA", color = PaperInk, fontFamily = MonoFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            Text("SAMPLE", color = PaperMuted, style = MaterialTheme.typography.labelSmall)
         }
         rows.forEachIndexed { index, (label, value) ->
             HorizontalDivider(color = Color(0xFFD2D9E3), modifier = Modifier.padding(top = 12.dp))
@@ -891,7 +907,7 @@ private fun RedactionCard() {
                 }
             }
         }
-        Text("What MetaVault removes from your copy.", color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
+        Text("Example only · choose a file to inspect its actual metadata.", color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
     }
 }
 
@@ -900,11 +916,15 @@ private fun RedactionCard() {
 private fun HomePage(onStart: () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Share the photo, not where you took it.", color = TextMain, style = MaterialTheme.typography.headlineLarge)
-            Text("Photos quietly record the location, time and device behind them. MetaVault shows that data, lets you edit or remove it, and saves a copy. Everything happens on your device.", color = Muted, style = MaterialTheme.typography.bodyLarge)
+            Text("Share the photo.\nKeep the details private.", color = TextMain, style = MaterialTheme.typography.headlineMedium)
+            Text("See what your files reveal, then clean a copy before you share. Your files stay on this device.", color = Muted, style = MaterialTheme.typography.bodyLarge)
         }
         RedactionCard()
-        PrimaryButton("Choose a file", Icons.Default.FolderOpen, onStart)
+        PrimaryButton("Browse files", Icons.Default.FolderOpen, onStart)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            HomeTrustItem(Modifier.weight(1f), Icons.Default.PhonelinkLock, "On device")
+            HomeTrustItem(Modifier.weight(1f), Icons.Default.FileCopy, "Save a copy")
+        }
     }
 }
 
@@ -921,7 +941,7 @@ private fun BrowsePage(counts: Map<String, Int>, accessByPage: Map<Page, MediaAc
             Pair(Page.DOCS, Icons.Default.Description)
         )
         items.chunked(2).forEach { rowItems ->
-            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 rowItems.forEach { (target, icon) ->
                     val (support, supported) = supportShort(target)
                     VaultCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
@@ -972,12 +992,38 @@ private fun LibraryPage(
     onOpen: (DeviceMedia) -> Unit, onSystemPick: () -> Unit, onRefresh: () -> Unit, onAllFiles: () -> Unit
 ) {
     val category = categoryKey(page)
-    val list = remember(items, category) { items.filter { it.category == category } }
+    var query by rememberSaveable(category) { mutableStateOf("") }
+    var order by rememberSaveable(category) { mutableStateOf("Newest first") }
+    var choosingOrder by remember(category) { mutableStateOf(false) }
+    val files = remember(items, category) { items.filter { it.category == category } }
+    val list = remember(files, query, order) {
+        val matches = files.filter { it.name.contains(query.trim(), ignoreCase = true) }
+        val byName = compareBy<DeviceMedia, String>(String.CASE_INSENSITIVE_ORDER) { it.name }.thenBy { it.uri.toString() }
+        when (order) {
+            "Name A–Z" -> matches.sortedWith(byName)
+            "Largest first" -> matches.sortedWith(compareByDescending<DeviceMedia> { it.size }.then(byName))
+            else -> matches.sortedWith(compareByDescending<DeviceMedia> { it.modified }.then(byName))
+        }
+    }
     val icon = when (category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; "Audio" -> Icons.Default.MusicNote; "PDF" -> Icons.Default.PictureAsPdf; else -> Icons.Default.Description }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Box(Modifier.weight(1f)) { PageHeading(page.label, list.size.toString() + " files · " + supportShort(page).first) }
             TextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Refresh") }
+        }
+        if (files.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(query, { query = it }, Modifier.weight(1f),
+                    label = { Text("Search filenames") }, singleLine = true)
+                Box {
+                    TextButton(onClick = { choosingOrder = true }) { Text(order) }
+                    DropdownMenu(choosingOrder, { choosingOrder = false }) {
+                        listOf("Newest first", "Name A–Z", "Largest first").forEach { option ->
+                            DropdownMenuItem(text = { Text(option) }, onClick = { order = option; choosingOrder = false })
+                        }
+                    }
+                }
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onSystemPick) { Text("File picker") }
@@ -995,6 +1041,10 @@ private fun LibraryPage(
         }
         when {
             loading && list.isEmpty() -> VaultCard { Text("Loading…", color = Muted, style = MaterialTheme.typography.bodySmall) }
+            files.isNotEmpty() && list.isEmpty() -> VaultCard {
+                Text("No matching filenames", color = TextMain)
+                TextButton(onClick = { query = "" }) { Text("Clear search") }
+            }
             list.isEmpty() -> VaultCard {
                 Text("No files to show", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text(if (access == MediaAccessPolicy.Access.FULL) "No accessible files in this category. Try Refresh or the file picker." else "Files you allow MetaVault to access will appear here.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -1005,7 +1055,7 @@ private fun LibraryPage(
                 SecondaryButton("Use file picker", Icons.Default.FolderOpen, onSystemPick)
             }
             category == "Photo" || category == "Video" -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3), modifier = Modifier.weight(1f),
+                columns = GridCells.Adaptive(104.dp), modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -1013,7 +1063,9 @@ private fun LibraryPage(
                     Box(
                         Modifier.aspectRatio(1f).clip(RoundedCornerShape(12.dp))
                             .border(1.dp, Line, RoundedCornerShape(12.dp))
-                            .clickable { onOpen(item) }
+                            .clickable(role = androidx.compose.ui.semantics.Role.Button,
+                                onClickLabel = "Open ${item.name}", onClick = { onOpen(item) })
+                            .semantics { contentDescription = item.name }
                     ) {
                         Thumb(item.uri, 256, Modifier.fillMaxSize(), icon)
                         if (category == "Video") {
@@ -1029,7 +1081,7 @@ private fun LibraryPage(
                             Icon(icon, null, tint = AccentSoft)
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(item.name, color = TextMain, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(item.name, color = TextMain, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 Text(item.mime, color = Muted, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             Icon(Icons.Default.ChevronRight, null, tint = Muted)
@@ -1236,14 +1288,16 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
 @Composable
 private fun SettingsPage(
     allFiles: Boolean, selectedTheme: String, hasCustomPhoto: Boolean,
+    previewThemes: Boolean, onPreviewThemes: (Boolean) -> Unit,
     onThemeSelected: (String) -> Unit, onCustomPhoto: () -> Unit, onClearPhoto: () -> Unit,
     onAbout: () -> Unit, onPermissions: () -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Settings", "Personalise your MetaVault experience.")
         VaultCard {
             Text("Appearance & themes", color = TextMain, style = MaterialTheme.typography.titleMedium)
-            Text("Choose a colour atmosphere for your app.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text("The glass stays neutral; themes only change the background.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            SettingRow("Preview theme backgrounds", "Show the chosen theme behind the glass", previewThemes, onPreviewThemes)
             val themes = listOf("Aurora", "Ocean", "Violet", "Emerald", "Sunset", "Rose", "Midnight", "Monochrome")
             themes.chunked(2).forEach { pair ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1314,11 +1368,11 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 5.dp)
             .clip(shape)
             .background(Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.14f)
+                Color.White.copy(alpha = 0.06f), Color.White.copy(alpha = 0.025f), Color.White.copy(alpha = 0.05f)
             )))
             .border(1.dp, Brush.linearGradient(listOf(
-                Color.White.copy(alpha = 0.48f), Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.30f)
+                Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.16f),
+                Color.White.copy(alpha = 0.22f)
             )), shape)
     ) {
         BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp)) {
@@ -1329,7 +1383,7 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
                 animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
             Box(Modifier.offset { IntOffset(indicatorOffset.roundToPx(), 0) }.width(indicatorWidth).fillMaxHeight()
                 .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
-                .background(Color.White.copy(alpha = 0.16f))
+                .background(Color.White.copy(alpha = 0.10f))
             )
             Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             tabs.forEach { item ->
@@ -1341,23 +1395,23 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
                     else -> Icons.Default.Settings
                 }
                 val selected = activeTab == item
-                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp))
-                    .clickable { onPageSelected(item) },
+                Column(Modifier.weight(1f).heightIn(min = 48.dp).clip(RoundedCornerShape(18.dp))
+                    .selectable(selected, role = androidx.compose.ui.semantics.Role.Tab) { onPageSelected(item) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center) {
                     Box(Modifier.clip(RoundedCornerShape(14.dp))
                         .padding(horizontal = 13.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
-                        Icon(icon, contentDescription = item.label,
+                        Icon(icon, contentDescription = null,
                             tint = if (selected) Color.White else Muted, modifier = Modifier.size(19.dp))
                     }
                     Text(item.label, color = if (selected) AccentSoft else Muted,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, lineHeight = 14.sp))
                 }
             }
         }
         Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
             .background(Brush.horizontalGradient(listOf(Color.Transparent,
-                Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.18f), Color.Transparent))))
+                Color.White.copy(alpha = 0.30f), Color.White.copy(alpha = 0.12f), Color.Transparent))))
         }
     }
 }
@@ -1369,11 +1423,11 @@ private fun VaultCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = nu
     // from caller layout modifiers so both the content and ripple stay rounded.
     Box(modifier.fillMaxWidth().clip(shape)
         .background(Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.035f), Color.White.copy(alpha = 0.07f)
+            Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.025f), Color.White.copy(alpha = 0.055f)
         )))
         .border(1.dp, Brush.linearGradient(listOf(
-            Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.20f),
-            Color.White.copy(alpha = 0.28f)
+            Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.16f),
+            Color.White.copy(alpha = 0.24f)
         )), shape)
         .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
         Column(Modifier.fillMaxWidth().padding(16.dp),
@@ -1390,7 +1444,7 @@ private fun PrimaryButton(
     container: Color = Accent, content: Color = Color.White
 ) {
     Button(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
+        onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.buttonColors(containerColor = container, contentColor = content, disabledContentColor = content)
     ) {
@@ -1403,13 +1457,22 @@ private fun PrimaryButton(
 @Composable
 private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
     OutlinedButton(
-        onClick = onClick, modifier = Modifier.fillMaxWidth().height(52.dp),
+        onClick = onClick, modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
         shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, LineStrong),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextMain)
     ) {
         Icon(icon, null)
         Spacer(Modifier.width(9.dp))
         Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+    }
+}
+
+@Composable
+private fun HomeTrustItem(modifier: Modifier, icon: ImageVector, label: String) {
+    Row(modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Icon(icon, null, tint = Clean, modifier = Modifier.size(20.dp))
+        Text(label, color = TextMain, style = MaterialTheme.typography.labelLarge, maxLines = 2)
     }
 }
 
@@ -1423,7 +1486,9 @@ private fun InfoBullet(title: String, detail: String) {
 
 @Composable
 private fun SettingsAction(title: String, detail: String, icon: ImageVector, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onClick() }.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
+        .clickable(role = androidx.compose.ui.semantics.Role.Button, onClickLabel = title, onClick = onClick)
+        .padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = AccentSoft)
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
