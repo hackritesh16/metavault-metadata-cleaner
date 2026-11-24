@@ -30,7 +30,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
@@ -47,6 +48,7 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -302,11 +304,11 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     val counts = remember(deviceMedia) { deviceMedia.groupingBy { it.category }.eachCount() }
     val kind = if (selectedUri != null) MetadataEngine.kindOf(fileName, mime) else MetadataEngine.Kind.UNSUPPORTED
 
-    fun say(message: String) {
+    fun say(message: String, saved: Boolean = false) {
         status = message
         scope.launch {
             snackbar.currentSnackbarData?.dismiss()
-            snackbar.showSnackbar(message)
+            if (saved) snackbar.showSnackbar(SavedNotice(message)) else snackbar.showSnackbar(message)
         }
     }
 
@@ -431,7 +433,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
             val (code, sender) = outcome
             when {
                 code == "ok" -> {
-                    say("Done. The original was replaced. A backup is kept; restore it from History.")
+                    say("Done. The original was replaced. A backup is kept; restore it from History.", saved = true)
                     history = listOf(HistoryEntry(label, detail)) + history
                     readyBytes = null
                     thumbCache.evictAll()
@@ -485,7 +487,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                 }
                 if (name == null) say("Skipped. Your processed file is still ready.")
                 else {
-                    say("Saved and verified $name.")
+                    say("Saved and verified $name.", saved = true)
                     history = listOf(HistoryEntry(name, lastAction)) + history
                     readyBytes = null
                 }
@@ -554,16 +556,25 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
             Scaffold(
                 containerColor = Color.Transparent,
                 contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
-                snackbarHost = { SnackbarHost(snackbar) },
+                snackbarHost = {
+                    SnackbarHost(snackbar) { data ->
+                        if (data.visuals is SavedNotice) Snackbar(containerColor = Surface2, contentColor = TextMain) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraLayout.compact)) {
+                                AuroraSuccessMark()
+                                Text(data.visuals.message)
+                            }
+                        } else Snackbar(data)
+                    }
+                },
                 bottomBar = {
-                    StableGlassBottomBar(page = page, onPageSelected = { if (!busy) page = it })
+                    StableGlassBottomBar(page = page, enabled = !busy, onPageSelected = { if (!busy) page = it })
                 }
             ) { padding ->
                 AuroraContentFrame(padding) {
                     Header()
-                    if (page in LibraryPages) {
-                        // Gallery pages use lazy lists, so they must not sit inside a scrolling column.
-                        Box(Modifier.weight(1f)) {
+                    AuroraPageMotion(page, Modifier.weight(1f).fillMaxWidth()) {
+                        if (page in LibraryPages) {
+                            // Gallery pages use lazy lists, so they must not sit inside a scrolling column.
                             LibraryPage(
                                 page = page, items = deviceMedia, loading = libraryLoading,
                                 hasAllFiles = allFiles, access = accessByPage.getValue(page),
@@ -582,14 +593,10 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                 },
                                 onRefresh = { reloadTick++ }, onAllFiles = openAllFilesAccess
                             )
-                        }
-                    } else {
-                        Column(
-                            Modifier.weight(1f).verticalScroll(mainScrollState).padding(bottom = 24.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            AnimatedContent(targetState = page, label = "page") { current ->
-                                when (current) {
+                        } else {
+                            Column(Modifier.fillMaxSize().verticalScroll(mainScrollState).padding(bottom = 24.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                when (page) {
                                     Page.HOME -> HomePage(
                                         currentName = selectedUri?.let { fileName },
                                         onBatch = { if (!busy) batch.visible = true },
@@ -700,12 +707,12 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                     Page.ABOUT -> AboutPage()
                                     else -> {}
                                 }
+                                Text(
+                                    "MetaVault is in beta. Your files stay on this device.",
+                                    color = Muted, style = MaterialTheme.typography.bodySmall,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp)
+                                )
                             }
-                            Text(
-                                "MetaVault is in beta. Your files stay on this device.",
-                                color = Muted, style = MaterialTheme.typography.bodySmall,
-                                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 4.dp)
-                            )
                         }
                     }
                 }
@@ -851,7 +858,8 @@ private fun LibraryPage(
         }
     }
     val icon = when (category) { "Photo" -> Icons.Default.Image; "Video" -> Icons.Default.VideoLibrary; "Audio" -> Icons.Default.MusicNote; "PDF" -> Icons.Default.PictureAsPdf; else -> Icons.Default.Description }
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val emptyScroll = if (list.isEmpty()) Modifier.verticalScroll(rememberScrollState()) else Modifier
+    Column(Modifier.fillMaxSize().then(emptyScroll), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
             Box(Modifier.weight(1f)) { PageHeading(page.label, list.size.toString() + " files · " + supportShort(page).first) }
             AuroraTextButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, null, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text("Refresh") }
@@ -885,12 +893,13 @@ private fun LibraryPage(
             AuroraTextButton(onClick = onAppPermissions) { Text("App permission settings") }
         }
         when {
-            loading && list.isEmpty() -> AuroraGlassCard { Text("Loading…", color = Muted, style = MaterialTheme.typography.bodySmall) }
+            loading && list.isEmpty() -> AuroraGlassCard { AuroraLoadingLabel("Loading files…") }
             files.isNotEmpty() && list.isEmpty() -> AuroraGlassCard {
                 Text("No matching filenames", color = TextMain)
                 AuroraTextButton(onClick = { query = "" }) { Text("Clear search") }
             }
             list.isEmpty() -> AuroraGlassCard {
+                Icon(icon, null, tint = AccentSoft)
                 Text("No files to show", color = TextMain, style = MaterialTheme.typography.titleMedium)
                 Text(if (access == MediaAccessPolicy.Access.FULL) "No accessible files in this category. Try Refresh or the file picker." else "Files you allow MetaVault to access will appear here.", color = Muted, style = MaterialTheme.typography.bodySmall)
                 if (Build.VERSION.SDK_INT >= 30 && !hasAllFiles && (category == "PDF" || category == "Document")) {
@@ -953,7 +962,7 @@ private fun MetadataSection(
     AuroraGlassCard {
         Text("Metadata in this file", color = TextMain, style = MaterialTheme.typography.titleMedium)
         when {
-            inspecting -> Text("Reading metadata…", color = Muted, style = MaterialTheme.typography.bodySmall)
+            inspecting -> AuroraLoadingLabel("Reading metadata…")
             inspectError != null -> Text(inspectError, color = Muted, style = MaterialTheme.typography.bodySmall)
             kind == MetadataEngine.Kind.UNSUPPORTED -> Text("Viewing metadata is not supported for this format yet.", color = Muted, style = MaterialTheme.typography.bodySmall)
             fields == null -> Text("No metadata loaded.", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -1039,7 +1048,9 @@ private fun CleanerPage(
         }
         AuroraGlassButton(if (busy) "Working…" else "Remove metadata", Icons.Default.AutoAwesome, onClean,
             enabled = !busy, loading = busy)
-        AnimatedVisibility(ready) { result() }
+        if (LocalMotionEnabled.current) {
+            AnimatedVisibility(ready, enter = fadeIn(tween(240)), exit = fadeOut(tween(120))) { result() }
+        } else if (ready) result()
         Text(status, color = if (ready) Clean else Muted, style = MaterialTheme.typography.bodySmall)
     }
 }
@@ -1198,7 +1209,8 @@ private fun PageHeading(title: String, subtitle: String) {
 }
 
 @Composable
-private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
+private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (Page) -> Unit) {
+    val view = androidx.compose.ui.platform.LocalView.current
     val shape = RoundedCornerShape(24.dp)
     val activeTab = when (page) {
         Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
@@ -1211,31 +1223,42 @@ private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
             .padding(horizontal = AuroraLayout.padding, vertical = AuroraLayout.small)
             .auroraGlass(shape).padding(AuroraLayout.small)) {
             val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
-            val tabWidth = maxWidth / tabs.size
-            val offset by animateDpAsState(tabWidth * tabs.indexOf(activeTab).coerceAtLeast(0),
-                animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
-            Box(Modifier.matchParentSize()) {
-                Box(Modifier.offset { IntOffset(offset.roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
-                    .padding(horizontal = 2.dp, vertical = 1.dp)
-                    .background(Color.White.copy(alpha = 0.10f), AuroraLayout.buttonShape))
-            }
-            Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
-                tabs.forEach { item ->
-                    val icon = when (item) {
-                        Page.HOME -> Icons.Default.Home
-                        Page.BROWSE -> Icons.Default.FolderOpen
-                        Page.CLEANER -> Icons.Default.AutoAwesome
-                        Page.HISTORY -> Icons.Default.History
-                        else -> Icons.Default.Settings
+            val tabWidth = (maxWidth / tabs.size).coerceAtLeast(AuroraLayout.touchTarget)
+            val overflow = if (maxWidth < AuroraLayout.touchTarget * tabs.size)
+                Modifier.horizontalScroll(rememberScrollState()) else Modifier
+            Box(overflow) {
+                Box(Modifier.width(tabWidth * tabs.size)) {
+                    val target = tabWidth * tabs.indexOf(activeTab).coerceAtLeast(0)
+                    val offset = if (LocalMotionEnabled.current) animateDpAsState(target,
+                        tween(NavigationMillis, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
+                        else rememberUpdatedState(target)
+                    Box(Modifier.matchParentSize()) {
+                        Box(Modifier.offset { IntOffset(offset.value.roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
+                            .padding(horizontal = 2.dp, vertical = 1.dp)
+                            .background(Color.White.copy(alpha = 0.10f), AuroraLayout.buttonShape))
                     }
-                    val selected = activeTab == item
-                    Column(Modifier.weight(1f).heightIn(min = AuroraLayout.touchTarget).clip(AuroraLayout.buttonShape)
-                        .selectable(selected, role = androidx.compose.ui.semantics.Role.Tab) { onPageSelected(item) },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center) {
-                        Icon(icon, null, tint = if (selected) TextMain else Muted, modifier = Modifier.size(20.dp))
-                        Text(item.label, color = if (selected) AccentSoft else Muted,
-                            style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                    Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
+                        tabs.forEach { item ->
+                            val icon = when (item) {
+                                Page.HOME -> Icons.Default.Home
+                                Page.BROWSE -> Icons.Default.FolderOpen
+                                Page.CLEANER -> Icons.Default.AutoAwesome
+                                Page.HISTORY -> Icons.Default.History
+                                else -> Icons.Default.Settings
+                            }
+                            val selected = activeTab == item
+                            Column(Modifier.weight(1f).heightIn(min = AuroraLayout.touchTarget).clip(AuroraLayout.buttonShape)
+                                .selectable(selected, enabled = enabled, role = androidx.compose.ui.semantics.Role.Tab) {
+                                    if (page != item) view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                                    onPageSelected(item)
+                                },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center) {
+                                Icon(icon, null, tint = if (selected) TextMain else Muted, modifier = Modifier.size(20.dp).selectionMotion(selected))
+                                Text(item.label, color = if (selected) AccentSoft else Muted,
+                                    style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                            }
+                        }
                     }
                 }
             }
