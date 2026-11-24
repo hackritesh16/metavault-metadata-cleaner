@@ -33,6 +33,12 @@ The Android APK Build GitHub workflow uploads `MetaVault-debug-apk` and runs uni
 | Video/other audio | Inspect fields exposed by Android | Cleaning unsupported |
 | PDF | Select files | Inspection/cleaning unsupported |
 
+## Aurora Glass design system
+
+`AuroraTheme.kt` defines the Material 3 palette, type scale, spacing and width limits. `AuroraComponents.kt` provides shared glass cards, buttons, status chips, icon containers and the safe-area content frame. `AuroraBackground.kt` draws the selected background with cached radial gradients or a user-selected photo.
+
+Android bundles Space Grotesk Bold, Manrope Regular/Medium/SemiBold and JetBrains Mono Medium. The first two families use local variable fonts, with explicit weight axes on Android 8 and newer. The APK includes the SIL Open Font License for each family in `assets/licenses/`. [Google Fonts source for Space Grotesk and Manrope](https://github.com/google/fonts/tree/06bfe0d62a98375cb09c942fa18e68bd32cff057/ofl)
+
 ## Batch cleaner
 
 Open **Batch clean files** from Home or Cleaner. Review the output name for each selected file or use **Rename all · add _clean** once. File extensions stay intact. **Save as new files** uses a folder you choose. **Overwrite originals** lists the files for confirmation and backs up each original before writing. **Stop after this file** finishes the active export. **Review unfinished files** lets you retry supported files that were skipped, failed or still in the queue.
