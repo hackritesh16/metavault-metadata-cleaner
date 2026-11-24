@@ -59,6 +59,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -1252,15 +1253,37 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                         val cell = size.width / tabs.size
                         val inset = 2.dp.toPx()
                         val stretch = ((endEdge.value - startEdge.value) - 1f).coerceIn(0f, 1f)
-                        val pillHeight = size.height * (1f - 0.10f * stretch)
+                        val pillHeight = (size.height - 4.dp.toPx()) * (1f - 0.13f * stretch)
                         val left = startEdge.value * cell + inset
                         val right = endEdge.value * cell - inset
                         if (right > left) {
+                            val top = (size.height - pillHeight) / 2f
+                            val pillSize = androidx.compose.ui.geometry.Size(right - left, pillHeight)
+                            val pillCorner = CornerRadius(pillHeight / 2f, pillHeight / 2f)
+                            // Strong enough to remain visible over the Aurora backdrop; the two
+                            // independently animated edges create the liquid stretch and recoil.
                             drawRoundRect(
-                                color = Color.White.copy(alpha = 0.10f),
-                                topLeft = Offset(left, (size.height - pillHeight) / 2f),
-                                size = androidx.compose.ui.geometry.Size(right - left, pillHeight),
-                                cornerRadius = CornerRadius(pillHeight / 2f, pillHeight / 2f)
+                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                    listOf(AccentSoft.copy(alpha = 0.42f),
+                                        Color.White.copy(alpha = 0.26f),
+                                        AccentSoft.copy(alpha = 0.34f)),
+                                    startX = left, endX = right
+                                ),
+                                topLeft = Offset(left, top), size = pillSize,
+                                cornerRadius = pillCorner
+                            )
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.52f),
+                                topLeft = Offset(left, top), size = pillSize,
+                                cornerRadius = pillCorner,
+                                style = Stroke(width = 1.dp.toPx())
+                            )
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.20f),
+                                topLeft = Offset(left + 8.dp.toPx(), top + 3.dp.toPx()),
+                                size = androidx.compose.ui.geometry.Size(
+                                    (right - left - 16.dp.toPx()).coerceAtLeast(0f), 2.dp.toPx()),
+                                cornerRadius = CornerRadius(2.dp.toPx())
                             )
                         }
                     }
@@ -1285,7 +1308,16 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                                     if (selected) TextMain else Muted,
                                     animationSpec = tween(if (motionEnabled) 220 else 0),
                                     label = "liquid-nav-tint")
-                                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp).selectionMotion(selected))
+                                val iconScale by androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = if (selected) 1.17f else 1f,
+                                    animationSpec = if (motionEnabled)
+                                        androidx.compose.animation.core.spring(
+                                            dampingRatio = 0.55f,
+                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
+                                    else androidx.compose.animation.core.snap(),
+                                    label = "liquid-nav-icon-scale")
+                                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp)
+                                    .graphicsLayer { scaleX = iconScale; scaleY = iconScale })
                                 Text(item.label, color = if (selected) AccentSoft else Muted,
                                     style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
                             }
