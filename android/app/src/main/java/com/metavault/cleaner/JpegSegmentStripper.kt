@@ -191,11 +191,29 @@ object JpegSegmentStripper {
         return byteArrayOf(0xFF.toByte(), 0xE1.toByte(), (len shr 8).toByte(), (len and 0xFF).toByte()) + payload
     }
 
+    /** Verify every remaining removable segment, including the exact retained orientation record. */
+    internal fun verifyCleaned(bytes: ByteArray, orientation: Int) {
+        val found = scan(bytes)
+        if (orientation in 2..8) {
+            val expected = orientationExif(orientation)
+            check(found.singleOrNull()?.isExif == true &&
+                matches(bytes, afterLeadingJfif(bytes), bytes.size, expected)) { "Unexpected JPEG metadata" }
+        } else {
+            check(found.isEmpty()) { "Unexpected JPEG metadata" }
+        }
+    }
+
+    private fun afterLeadingJfif(jpeg: ByteArray): Int {
+        if (jpeg.size > 6 && u(jpeg, 2) == FF && u(jpeg, 3) == 0xE0) {
+            val end = 4 + ((u(jpeg, 4) shl 8) or u(jpeg, 5))
+            if (end <= jpeg.size) return end
+        }
+        return 2
+    }
+
     /** Inserts [seg] after SOI, and after a leading JFIF APP0 if present (JFIF must come first). */
     private fun insertAfterJfif(jpeg: ByteArray, seg: ByteArray): ByteArray {
-        var at = 2
-        if (jpeg.size > 6 && u(jpeg, 2) == FF && u(jpeg, 3) == 0xE0) at = 4 + ((u(jpeg, 4) shl 8) or u(jpeg, 5))
-        if (at > jpeg.size) at = 2
+        val at = afterLeadingJfif(jpeg)
         return jpeg.copyOfRange(0, at) + seg + jpeg.copyOfRange(at, jpeg.size)
     }
 }

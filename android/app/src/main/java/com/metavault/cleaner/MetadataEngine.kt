@@ -212,8 +212,11 @@ object MetadataEngine {
         return CleanResult(after, removed, left, imageNote(base, trailing))
     }
 
+    internal fun jpegOrientation(bytes: ByteArray): Int =
+        readExif(bytes)?.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) ?: 1
+
     private fun cleanJpeg(context: Context, bytes: ByteArray): CleanResult {
-        val orientation = readExif(bytes)?.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) ?: 1
+        val orientation = jpegOrientation(bytes)
         val s = try {
             JpegSegmentStripper.strip(bytes, orientation)
         } catch (e: IllegalArgumentException) {
@@ -382,6 +385,26 @@ object MetadataEngine {
             out.toByteArray(), removed, 0,
             "Cleared author, last-modified-by, title, subject, keywords, company and manager. Created/modified dates and revision history inside the document are kept."
         )
+    }
+
+    /** Check only the properties the Office cleaner supports, on the prepared copy. */
+    internal fun verifyOfficeCopy(bytes: ByteArray, documentPart: String) {
+        var hasContentTypes = false
+        var hasDocument = false
+        forEachZipEntry(bytes) { entry, data ->
+            when (entry.name) {
+                "[Content_Types].xml" -> hasContentTypes = data.isNotEmpty()
+                documentPart -> hasDocument = data.isNotEmpty()
+                CORE, APP -> {
+                    val xml = String(data, Charsets.UTF_8)
+                    val tags = if (entry.name == CORE) CORE_TAGS else APP_TAGS
+                    check(tags.none { tag -> tagRegex(tag).findAll(xml).any { it.groupValues[2].isNotBlank() } }) {
+                        "A supported Office property remains"
+                    }
+                }
+            }
+        }
+        require(hasContentTypes && hasDocument) { "File does not match the selected Office format" }
     }
 
     // ---------- Other audio/video (view only) ----------

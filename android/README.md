@@ -33,6 +33,12 @@ The Android APK Build GitHub workflow uploads `MetaVault-debug-apk` and runs uni
 | Video/other audio | Inspect fields exposed by Android | Cleaning unsupported |
 | PDF | Select files | Inspection/cleaning unsupported |
 
+## Batch cleaner
+
+Under **Cleaner → Batch clean files**, select local files and choose a writable folder. MetaVault processes one file at a time, checks the supported metadata for that format, creates a new document and compares its saved bytes with the prepared copy. Verified exports appear in session History. The per-file results show skipped formats and failures. **Stop after this file** keeps completed copies and leaves the rest unprocessed.
+
+Batch supports JPEG, PNG, WebP, MP3 with recognizable Layer III frame headers, and DOCX/XLSX/PPTX. The single-file format limits above also apply. Unusual images that need EXIF-only fallback are refused in batch. The existing 64 MiB input limit applies per file. Selection and progress survive screen rotation within the running app. The queue is held in memory.
+
 ## Permission and navigation flow
 
 Launching the app does not request library or location permissions. Open a media
@@ -65,5 +71,5 @@ and lint do not replace physical-device tests of permission dialogs, partial
 selection, revoked access, background persistence, exports or backup restoration.
 
 No universal metadata removal or Metadata2Go feature parity is claimed. Persistent
-export history, search/sort/batch selection, video/PDF engines, full document
+export history, video/PDF engines, full document
 sanitization, conversion memory/orientation checks and release signing remain work.
