@@ -131,7 +131,7 @@ private enum class Page(val label: String) {
 
 private val LibraryPages = setOf(Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS)
 
-private data class HistoryEntry(val name: String, val detail: String)
+internal data class HistoryEntry(val name: String, val detail: String)
 private data class DeviceMedia(val uri: Uri, val name: String, val mime: String, val category: String, val size: Long?, val modified: Long?)
 private data class BackupEntry(val file: File, val name: String, val uriString: String, val time: Long)
 
@@ -213,7 +213,7 @@ private fun loadDeviceMedia(context: Context): List<DeviceMedia> {
 }
 
 /** Android hides GPS tags of gallery photos unless we ask for the original (needs ACCESS_MEDIA_LOCATION). */
-private fun originalUri(context: Context, uri: Uri): Uri {
+internal fun originalUri(context: Context, uri: Uri): Uri {
     if (Build.VERSION.SDK_INT >= 29 && uri.authority == MediaStore.AUTHORITY &&
         context.checkSelfPermission(Manifest.permission.ACCESS_MEDIA_LOCATION) == PackageManager.PERMISSION_GRANTED
     ) {
@@ -254,7 +254,7 @@ private fun decodeBackground(context: Context, uri: Uri): Bitmap? {
 
 // ---------- Saving and backups ----------
 
-private fun sanitizeName(name: String): String =
+internal fun sanitizeName(name: String): String =
     name.replace(Regex("[\\\\/:*?\"<>|]"), "_").trim().ifBlank { "metavault-file" }
 
 private fun mimeForExt(ext: String): String = when (ext.lowercase(Locale.ROOT)) {
@@ -313,13 +313,14 @@ class MainActivity : ComponentActivity() {
         window.statusBarColor = android.graphics.Color.rgb(10, 15, 26)
         window.navigationBarColor = android.graphics.Color.rgb(15, 22, 36)
         window.decorView.systemUiVisibility = 0
-        setContent { MetaVaultApp() }
+        val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
+        setContent { MetaVaultApp(batch) }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun MetaVaultApp() {
+private fun MetaVaultApp(batch: BatchCleanerModel) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -353,7 +354,7 @@ private fun MetaVaultApp() {
     var outBase by remember { mutableStateOf("metavault-clean") }
     var outExt by remember { mutableStateOf("jpg") }
     var lastAction by remember { mutableStateOf("Clean copy saved") }
-    var history by remember { mutableStateOf(listOf<HistoryEntry>()) }
+    var history by batch.history
     var backups by remember { mutableStateOf(listOf<BackupEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
     var libraryLoading by remember { mutableStateOf(false) }
@@ -610,6 +611,7 @@ private fun MetaVaultApp() {
         ),
         typography = VaultTypography
     ) {
+        BatchCleanerDialog(batch)
         requestedCategory?.let { requested ->
             AlertDialog(
                 onDismissRequest = { requestedCategory = null },
@@ -694,6 +696,7 @@ private fun MetaVaultApp() {
                                         isImage = kind == MetadataEngine.Kind.IMAGE,
                                         convert = convert, onConvert = { convert = it }, output = output, onOutput = { output = it },
                                         busy = busy, status = status, ready = readyBytes != null,
+                                        onBatch = { batch.visible = true },
                                         onChangeFile = { if (!busy) page = Page.BROWSE },
                                         onClean = {
                                             val uri = selectedUri
@@ -1110,12 +1113,15 @@ private fun CleanerPage(
     fileName: String, mime: String, hasFile: Boolean, isImage: Boolean,
     convert: Boolean, onConvert: (Boolean) -> Unit, output: String, onOutput: (String) -> Unit,
     busy: Boolean, status: String, ready: Boolean,
-    onChangeFile: () -> Unit, onClean: () -> Unit,
+    onChangeFile: () -> Unit, onClean: () -> Unit, onBatch: () -> Unit,
     extra: @Composable () -> Unit,
     result: @Composable () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("Cleaner", "Review what is inside a file, then save a clean copy.")
+        OutlinedButton(onClick = onBatch, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+            Text("Batch clean files")
+        }
         if (!hasFile) {
             VaultCard {
                 Icon(Icons.Default.AutoAwesome, null, tint = AccentSoft, modifier = Modifier.size(30.dp))
