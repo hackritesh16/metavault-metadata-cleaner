@@ -27,6 +27,8 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -51,20 +53,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
-import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -78,34 +80,34 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Semantic colors shared with the web app (see style.css). They follow the system light or dark appearance.
-// MainActivity sets Pal.dark before composing; a system appearance change recreates the activity.
-private object Pal { var dark = true }
-private fun pick(dark: Long, light: Long) = Color(if (Pal.dark) dark else light)
-private val Bg get() = pick(0xFF0A0F1A, 0xFFF2F4F8)
-private val Surface1 get() = pick(0xFF121A2B, 0xFFFFFFFF)
-private val Surface2 get() = pick(0xFF1A2438, 0xFFF7F8FB)
-private val Line get() = pick(0xFF26334D, 0xFFD8DEE8)
-private val LineStrong get() = pick(0xFF3B4B6B, 0xFFB5BFCF)
-private val TextMain get() = pick(0xFFEEF2F8, 0xFF0B1018)
-private val Muted get() = pick(0xFFA9B4CA, 0xFF4B586D)
-private val Accent get() = pick(0xFF3A63E8, 0xFF2548C8)
-private val AccentSoft get() = pick(0xFF8EABFF, 0xFF2548C8)
-private val AccentTint get() = pick(0x248EABFF, 0x172548C8)
-private val Clean get() = pick(0xFF3DDC97, 0xFF0B6B40)
-private val OnClean get() = pick(0xFF04210F, 0xFFFFFFFF)
-private val Warn get() = pick(0xFFFFB86B, 0xFF8A4B00)
+// Palette shared with the web app (see style.css).
+private val Bg = Color(0xFF0A0F1A)
+private val Surface1 = Color(0xFF0F1624)
+private val Surface2 = Color(0xFF141D2F)
+private val Line = Color(0xFF1F2A40)
+private val LineStrong = Color(0xFF33425F)
+private val TextMain = Color(0xFFEEF2F8)
+private val Muted = Color(0xFFCDD1D8)
+private val Accent = Color(0xFF3A63E8)
+private val AccentSoft = Color(0xFF8EABFF)
+private val AccentTint = Color(0x333A63E8)
+private val Clean = Color(0xFF3DDC97)
+private val Warn = Color(0xFFFFB454)
 private val Paper = Color(0xFFF3F5F8)
 private val PaperInk = Color(0xFF0B1018)
 private val PaperMuted = Color(0xFF4B586D)
 
-// Headings use Bricolage Grotesque, bundled in res/font so the app never downloads it. Body and data use system fonts.
+// Fonts are bundled in res/font so the app never downloads them.
 private val DisplayFont = FontFamily(
     Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
     Font(R.font.bricolage_grotesque_bold, FontWeight.Bold)
 )
-private val BodyFont = FontFamily.Default
-private val MonoFont = FontFamily.Monospace
+private val BodyFont = FontFamily(
+    Font(R.font.instrument_sans_regular, FontWeight.Normal),
+    Font(R.font.instrument_sans_medium, FontWeight.Medium),
+    Font(R.font.instrument_sans_semibold, FontWeight.SemiBold)
+)
+private val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
 
 private val VaultTypography = Typography(
     headlineLarge = TextStyle(fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = 36.sp, lineHeight = 39.sp, letterSpacing = (-0.9).sp),
@@ -228,6 +230,19 @@ private fun loadThumb(context: Context, uri: Uri, size: Int): Bitmap? {
     return bitmap
 }
 
+/** Decode only a display-sized bitmap; a camera photo must not exhaust the UI heap. */
+private fun decodeBackground(context: Context, uri: Uri): Bitmap? {
+    val resolver = context.contentResolver
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+    var sample = 1
+    while (maxOf(bounds.outWidth, bounds.outHeight) / sample > 2048) sample *= 2
+    return resolver.openInputStream(uri)?.use {
+        BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample })
+    }
+}
+
 // ---------- Saving and backups ----------
 
 private fun sanitizeName(name: String): String =
@@ -286,14 +301,9 @@ private fun loadBackups(context: Context): List<BackupEntry> {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val night = android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        Pal.dark = (resources.configuration.uiMode and night) == android.content.res.Configuration.UI_MODE_NIGHT_YES
-        window.statusBarColor = Bg.toArgb()
-        window.navigationBarColor = Surface1.toArgb()
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = !Pal.dark
-            isAppearanceLightNavigationBars = !Pal.dark
-        }
+        window.statusBarColor = android.graphics.Color.rgb(10, 15, 26)
+        window.navigationBarColor = android.graphics.Color.rgb(15, 22, 36)
+        window.decorView.systemUiVisibility = 0
         setContent { MetaVaultApp() }
     }
 }
@@ -305,13 +315,30 @@ private fun MetaVaultApp() {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var page by remember { mutableStateOf(Page.HOME) }
+    var selectedTheme by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora") }
+    var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
+    val mainScrollState = rememberScrollState()
+    var status by remember { mutableStateOf("Your files stay on this device.") }
+    var customPhotoBitmap by remember(customPhotoUri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(customPhotoUri) {
+        customPhotoBitmap = customPhotoUri?.let { raw ->
+            withContext(Dispatchers.IO) { runCatching { decodeBackground(context, Uri.parse(raw)) }.getOrNull() }
+        }
+    }
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            customPhotoUri = uri.toString()
+            context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("background_photo", uri.toString()).apply()
+            status = "Custom background photo applied."
+        }
+    }
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var fileName by remember { mutableStateOf("No file selected") }
     var mime by remember { mutableStateOf("image/jpeg") }
     var convert by remember { mutableStateOf(false) }
     var output by remember { mutableStateOf("image/jpeg") }
     var busy by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("Your files stay on this device.") }
     var readyBytes by remember { mutableStateOf<ByteArray?>(null) }
     var outBase by remember { mutableStateOf("metavault-clean") }
     var outExt by remember { mutableStateOf("jpg") }
@@ -402,6 +429,13 @@ private fun MetaVaultApp() {
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
+            // Keep SAF access for later backup restore where the provider allows it.
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            }.onFailure {
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            }
             selectedUri = uri
             fileName = "No file selected"
             runCatching {
@@ -524,9 +558,11 @@ private fun MetaVaultApp() {
     }
 
     fun restoreBackup(entry: BackupEntry) {
+        if (busy) return
+        busy = true
         scope.launch {
             val bytes = withContext(Dispatchers.IO) { runCatching { entry.file.readBytes() }.getOrNull() }
-            if (bytes == null) { say("The backup file could not be read."); return@launch }
+            if (bytes == null) { busy = false; say("The backup file could not be read."); return@launch }
             overwriteOriginal(Uri.parse(entry.uriString), bytes, entry.name, "Original restored from backup")
         }
     }
@@ -542,12 +578,12 @@ private fun MetaVaultApp() {
     }
 
     MaterialTheme(
-        colorScheme = (if (Pal.dark) darkColorScheme() else lightColorScheme()).copy(
+        colorScheme = darkColorScheme(
             background = Bg, surface = Surface1, surfaceVariant = Surface2,
             primary = Accent, onPrimary = Color.White,
-            secondary = AccentSoft, onSecondary = if (Pal.dark) PaperInk else Color.White,
+            secondary = AccentSoft, onSecondary = PaperInk,
             secondaryContainer = AccentTint, onSecondaryContainer = TextMain,
-            tertiary = Clean, onTertiary = OnClean,
+            tertiary = Clean, onTertiary = Color(0xFF04210F),
             onBackground = TextMain, onSurface = TextMain, onSurfaceVariant = Muted,
             outline = LineStrong, outlineVariant = Line
         ),
@@ -564,40 +600,12 @@ private fun MetaVaultApp() {
             )
         }
         Box(Modifier.fillMaxSize().background(Bg)) {
+            LiquidBackdrop(theme = selectedTheme, scrollOffset = mainScrollState.value.toFloat(), photo = customPhotoBitmap)
             Scaffold(
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    Column {
-                        HorizontalDivider(color = Line)
-                        NavigationBar(containerColor = Surface1, tonalElevation = 0.dp) {
-                            val activeTab = when (page) {
-                                Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
-                                Page.ABOUT -> Page.SETTINGS
-                                else -> page
-                            }
-                            listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
-                                val icon = when (item) {
-                                    Page.HOME -> Icons.Default.Home
-                                    Page.BROWSE -> Icons.Default.FolderOpen
-                                    Page.CLEANER -> Icons.Default.AutoAwesome
-                                    Page.HISTORY -> Icons.Default.History
-                                    else -> Icons.Default.Settings
-                                }
-                                NavigationBarItem(
-                                    selected = activeTab == item,
-                                    onClick = { page = item },
-                                    icon = { Icon(icon, contentDescription = item.label) },
-                                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = AccentSoft, selectedTextColor = AccentSoft,
-                                        indicatorColor = AccentTint, unselectedIconColor = Muted,
-                                        unselectedTextColor = Muted
-                                    )
-                                )
-                            }
-                        }
-                    }
+                    StableGlassBottomBar(page = page, onPageSelected = { if (!busy) page = it })
                 }
             ) { padding ->
                 Column(
@@ -628,7 +636,7 @@ private fun MetaVaultApp() {
                         }
                     } else {
                         Column(
-                            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(bottom = 24.dp),
+                            Modifier.weight(1f).verticalScroll(mainScrollState).padding(bottom = 24.dp),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             AnimatedContent(targetState = page, label = "page") { current ->
@@ -640,7 +648,7 @@ private fun MetaVaultApp() {
                                         isImage = kind == MetadataEngine.Kind.IMAGE,
                                         convert = convert, onConvert = { convert = it }, output = output, onOutput = { output = it },
                                         busy = busy, status = status, ready = readyBytes != null,
-                                        onChangeFile = { page = Page.BROWSE },
+                                        onChangeFile = { if (!busy) page = Page.BROWSE },
                                         onClean = {
                                             val uri = selectedUri
                                             if (uri == null) { status = "Choose a file first." }
@@ -722,8 +730,14 @@ private fun MetaVaultApp() {
                                             )
                                         }
                                     )
-                                    Page.HISTORY -> HistoryPage(history, backups, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
-                                    Page.SETTINGS -> SettingsPage(allFiles = allFiles, onAbout = { page = Page.ABOUT }, onPermissions = openAllFilesAccess)
+                                    Page.HISTORY -> HistoryPage(history, backups, busy = busy, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
+                                    Page.SETTINGS -> SettingsPage(
+                                        allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
+                                        onThemeSelected = { selectedTheme = it; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
+                                        onCustomPhoto = { backgroundPicker.launch(arrayOf("image/*")) },
+                                        onClearPhoto = { customPhotoUri = null; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().remove("background_photo").apply() },
+                                        onAbout = { page = Page.ABOUT }, onPermissions = openAllFilesAccess
+                                    )
                                     Page.ABOUT -> AboutPage()
                                     else -> {}
                                 }
@@ -737,6 +751,40 @@ private fun MetaVaultApp() {
                     }
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+private fun LiquidBackdrop(theme: String, scrollOffset: Float, photo: Bitmap?) {
+    val colors = when (theme) {
+        "Ocean" -> listOf(Color(0xFF087EAA), Color(0xFF16C5C0), Color(0xFF173A85))
+        "Violet" -> listOf(Color(0xFF7042C8), Color(0xFFB45BDB), Color(0xFF253A91))
+        "Emerald" -> listOf(Color(0xFF087B63), Color(0xFF52C878), Color(0xFF145B8C))
+        "Sunset" -> listOf(Color(0xFFE06A42), Color(0xFFE5A044), Color(0xFF8D3C83))
+        "Rose" -> listOf(Color(0xFFC34F83), Color(0xFFEA8DAD), Color(0xFF653C9C))
+        "Midnight" -> listOf(Color(0xFF34518D), Color(0xFF526A9D), Color(0xFF15233F))
+        "Monochrome" -> listOf(Color(0xFF686868), Color(0xFFA0A0A0), Color(0xFF383838))
+        else -> listOf(Color(0xFF287BEA), Color(0xFF20BDB9), Color(0xFF3152B5))
+    }
+    Box(Modifier.fillMaxSize()) {
+        if (photo != null) {
+            Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            // A uniform neutral scrim keeps text readable without tinting the photo or cards.
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
+            return@Box
+        }
+        Canvas(Modifier.fillMaxSize()) {
+            val shift = (scrollOffset * 0.16f).coerceAtMost(size.height * 0.55f)
+            val radius = size.minDimension * 0.78f
+            val a = Offset(size.width * 0.84f, size.height * 0.10f - shift)
+            drawCircle(Brush.radialGradient(listOf(colors[0].copy(alpha = 0.40f), colors[0].copy(alpha = 0.10f), Color.Transparent), a, radius), radius, a)
+            val b = Offset(size.width * 0.08f, size.height * 0.72f + shift * 0.72f)
+            drawCircle(Brush.radialGradient(listOf(colors[1].copy(alpha = 0.24f), colors[1].copy(alpha = 0.07f), Color.Transparent), b, radius * 0.82f), radius * 0.82f, b)
+            val c = Offset(size.width * 0.90f, size.height * 1.02f - shift * 0.42f)
+            drawCircle(Brush.radialGradient(listOf(colors[2].copy(alpha = 0.22f), Color.Transparent), c, radius * 0.72f), radius * 0.72f, c)
+            drawRect(Color(0x33070D18))
         }
     }
 }
@@ -838,10 +886,10 @@ private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onP
             Pair(Page.DOCS, Icons.Default.Description)
         )
         items.chunked(2).forEach { rowItems ->
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 rowItems.forEach { (target, icon) ->
                     val (support, supported) = supportShort(target)
-                    VaultCard(Modifier.weight(1f).clickable { onCategory(target) }) {
+                    VaultCard(Modifier.weight(1f).fillMaxHeight(), onClick = { onCategory(target) }) {
                         Icon(icon, null, tint = AccentSoft, modifier = Modifier.size(24.dp))
                         Text(target.label, color = TextMain, style = MaterialTheme.typography.titleMedium)
                         Text((counts[categoryKey(target)] ?: 0).toString() + " files", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -864,7 +912,10 @@ private fun BrowsePage(counts: Map<String, Int>, onCategory: (Page) -> Unit, onP
 @Composable
 private fun Thumb(uri: Uri, size: Int, modifier: Modifier, fallback: ImageVector) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val bitmap by produceState<Bitmap?>(null, uri) { value = withContext(Dispatchers.IO) { loadThumb(context, uri, size) } }
+    var bitmap by remember(uri, size) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri, size) {
+        bitmap = withContext(Dispatchers.IO) { loadThumb(context, uri, size) }
+    }
     Box(modifier.background(Surface2), contentAlignment = Alignment.Center) {
         val b = bitmap
         if (b != null) Image(b.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
@@ -916,7 +967,7 @@ private fun LibraryPage(
             }
             else -> LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(list, key = { it.uri.toString() }) { item ->
-                    VaultCard(Modifier.clickable { onOpen(item) }) {
+                    VaultCard(onClick = { onOpen(item) }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(icon, null, tint = AccentSoft)
                             Spacer(Modifier.width(12.dp))
@@ -1023,7 +1074,7 @@ private fun CleanerPage(
                     Text(fileName, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(mime, color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
-                TextButton(onClick = onChangeFile) { Text("Change") }
+                TextButton(onClick = onChangeFile, enabled = !busy) { Text("Change") }
             }
         }
         extra()
@@ -1083,7 +1134,7 @@ private fun ResultCard(
             value = outBase, onValueChange = onOutBase, label = { Text("File name") },
             suffix = { Text("." + outExt) }, singleLine = true, modifier = Modifier.fillMaxWidth()
         )
-        PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = OnClean)
+        PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = Color(0xFF04210F))
         OutlinedButton(
             onClick = onOverwrite, enabled = canOverwrite && !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
@@ -1105,7 +1156,7 @@ private fun ResultCard(
 // ---------- History, Settings, About ----------
 
 @Composable
-private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>, onRestore: (BackupEntry) -> Unit, onDeleteBackup: (BackupEntry) -> Unit) {
+private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>, busy: Boolean, onRestore: (BackupEntry) -> Unit, onDeleteBackup: (BackupEntry) -> Unit) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()) }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PageHeading("History", "Exports from this session, and backups of originals you overwrote.")
@@ -1129,8 +1180,8 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
                     Text(b.name, color = TextMain, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(dateFormat.format(Date(b.time)), color = Muted, style = MaterialTheme.typography.bodySmall)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(onClick = { onRestore(b) }, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
-                        OutlinedButton(onClick = { onDeleteBackup(b) }, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
+                        OutlinedButton(onClick = { onRestore(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Restore") }
+                        OutlinedButton(onClick = { onDeleteBackup(b) }, enabled = !busy, modifier = Modifier.weight(1f), border = BorderStroke(1.dp, LineStrong)) { Text("Delete") }
                     }
                 }
             }
@@ -1140,9 +1191,34 @@ private fun HistoryPage(history: List<HistoryEntry>, backups: List<BackupEntry>,
 }
 
 @Composable
-private fun SettingsPage(allFiles: Boolean, onAbout: () -> Unit, onPermissions: () -> Unit) {
+private fun SettingsPage(
+    allFiles: Boolean, selectedTheme: String, hasCustomPhoto: Boolean,
+    onThemeSelected: (String) -> Unit, onCustomPhoto: () -> Unit, onClearPhoto: () -> Unit,
+    onAbout: () -> Unit, onPermissions: () -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        PageHeading("Settings", "Access and information.")
+        PageHeading("Settings", "Personalise your MetaVault experience.")
+        VaultCard {
+            Text("Appearance & themes", color = TextMain, style = MaterialTheme.typography.titleMedium)
+            Text("Choose a colour atmosphere for your app.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            val themes = listOf("Aurora", "Ocean", "Violet", "Emerald", "Sunset", "Rose", "Midnight", "Monochrome")
+            themes.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pair.forEach { theme ->
+                        FilterChip(selected = selectedTheme == theme, onClick = { onThemeSelected(theme) },
+                            label = { Text(theme) }, modifier = Modifier.weight(1f),
+                            leadingIcon = if (selectedTheme == theme) ({ Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp)) }) else null)
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+            HorizontalDivider(color = Line)
+            SettingsAction("Use your own photo", "Set an image from your gallery as the app background", Icons.Default.Image, onCustomPhoto)
+            if (hasCustomPhoto) {
+                Text("Your custom photo is active.", color = Clean, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onClearPhoto) { Text("Remove custom photo") }
+            }
+        }
         VaultCard {
             SettingsAction(
                 "All-files access",
@@ -1167,7 +1243,7 @@ private fun AboutPage() {
         VaultCard {
             InfoBullet("Originals stay safe", "Results are saved as a new file. Overwriting needs your confirmation and keeps a restorable backup.")
             InfoBullet("What can be cleaned", "JPG, PNG and WEBP images, MP3 audio, and DOCX, XLSX and PPTX documents.")
-            InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. XMP and IPTC blocks inside images are not covered yet.")
+            InfoBullet("What cannot yet", "Video, other audio formats and PDF can be viewed or are unsupported, but are not cleaned in this build. Image cleaning covers supported EXIF, XMP, IPTC and container metadata blocks; embedded trailing content and invisible pixel watermarks are not removed.")
         }
         Text("Android beta. Features are being developed incrementally.", color = Muted, style = MaterialTheme.typography.bodySmall)
     }
@@ -1184,14 +1260,85 @@ private fun PageHeading(title: String, subtitle: String) {
 }
 
 @Composable
-private fun VaultCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        modifier.fillMaxWidth()
-            .background(Surface1, RoundedCornerShape(18.dp))
-            .border(1.dp, Line, RoundedCornerShape(18.dp))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp), content = content
-    )
+private fun StableGlassBottomBar(page: Page, onPageSelected: (Page) -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    val activeTab = when (page) {
+        Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+        Page.ABOUT -> Page.SETTINGS
+        else -> page
+    }
+    Box(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 5.dp)
+            .clip(shape)
+            .background(Brush.linearGradient(listOf(
+                Color.White.copy(alpha = 0.16f), Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.14f)
+            )))
+            .border(1.dp, Brush.linearGradient(listOf(
+                Color.White.copy(alpha = 0.48f), Color.White.copy(alpha = 0.22f),
+                Color.White.copy(alpha = 0.30f)
+            )), shape)
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 4.dp, vertical = 3.dp)) {
+            val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
+            val activeIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
+            val indicatorWidth = maxWidth / tabs.size
+            val indicatorOffset by animateDpAsState(indicatorWidth * activeIndex,
+                animationSpec = tween(420, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
+            Box(Modifier.offset { IntOffset(indicatorOffset.roundToPx(), 0) }.width(indicatorWidth).fillMaxHeight()
+                .padding(horizontal = 2.dp, vertical = 1.dp).clip(RoundedCornerShape(18.dp))
+                .background(Color.White.copy(alpha = 0.16f))
+            )
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+            tabs.forEach { item ->
+                val icon = when (item) {
+                    Page.HOME -> Icons.Default.Home
+                    Page.BROWSE -> Icons.Default.FolderOpen
+                    Page.CLEANER -> Icons.Default.AutoAwesome
+                    Page.HISTORY -> Icons.Default.History
+                    else -> Icons.Default.Settings
+                }
+                val selected = activeTab == item
+                Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(18.dp))
+                    .clickable { onPageSelected(item) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.clip(RoundedCornerShape(14.dp))
+                        .padding(horizontal = 13.dp, vertical = 3.dp), contentAlignment = Alignment.Center) {
+                        Icon(icon, contentDescription = item.label,
+                            tint = if (selected) Color.White else Muted, modifier = Modifier.size(19.dp))
+                    }
+                    Text(item.label, color = if (selected) AccentSoft else Muted,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp))
+                }
+            }
+        }
+        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent,
+                Color.White.copy(alpha = 0.42f), Color.White.copy(alpha = 0.18f), Color.Transparent))))
+        }
+    }
+}
+
+@Composable
+private fun VaultCard(modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(20.dp)
+    // No elevation layer behind translucent glass. Clip the interaction separately
+    // from caller layout modifiers so both the content and ripple stay rounded.
+    Box(modifier.fillMaxWidth().clip(shape)
+        .background(Brush.linearGradient(listOf(
+            Color.White.copy(alpha = 0.10f), Color.White.copy(alpha = 0.035f), Color.White.copy(alpha = 0.07f)
+        )))
+        .border(1.dp, Brush.linearGradient(listOf(
+            Color.White.copy(alpha = 0.46f), Color.White.copy(alpha = 0.20f),
+            Color.White.copy(alpha = 0.28f)
+        )), shape)
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
+        Box(Modifier.fillMaxWidth().height(1.dp).align(Alignment.TopCenter)
+            .background(Brush.horizontalGradient(listOf(Color.Transparent,
+                Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.16f), Color.Transparent))))
+    }
 }
 
 @Composable
@@ -1255,7 +1402,7 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
             checked = checked, onCheckedChange = onChecked,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White, checkedTrackColor = Accent,
-                uncheckedThumbColor = Color.White, uncheckedTrackColor = LineStrong,
+                uncheckedThumbColor = Color(0xFFDCE4F8), uncheckedTrackColor = Color(0xFF3A4560),
                 uncheckedBorderColor = Color.Transparent
             )
         )

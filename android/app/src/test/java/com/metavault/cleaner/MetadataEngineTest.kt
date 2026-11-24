@@ -12,6 +12,46 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MetadataEngineTest {
+    @Test(expected = IllegalArgumentException::class)
+    fun cleanOffice_rejectsRenamedNonArchiveFile() {
+        MetadataEngine.cleanOffice("This is not an Office document".toByteArray())
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cleanMp3_rejectsIncompleteHeader() {
+        MetadataEngine.cleanMp3(byteArrayOf(73, 68, 51, 4))
+    }
+
+    @Test fun boundedRead_acceptsExactLimit() {
+        val input = byteArrayOf(1, 2, 3)
+        assertTrue(input.contentEquals(MetadataEngine.readBounded(ByteArrayInputStream(input), 3)))
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun boundedRead_rejectsUnknownSizeStreamOverLimit() {
+        MetadataEngine.readBounded(ByteArrayInputStream(ByteArray(10)), 9)
+    }
+
+    @Test fun boundedRead_acceptsEmptyStream() {
+        assertEquals(0, MetadataEngine.readBounded(ByteArrayInputStream(byteArrayOf()), 0).size)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cleanMp3_rejectsTruncatedId3InsteadOfReportingSuccess() {
+        MetadataEngine.cleanMp3(byteArrayOf(73, 68, 51, 3, 0, 0, 0, 0, 0, 20))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun cleanMp3_rejectsNonSynchsafeSize() {
+        MetadataEngine.cleanMp3(byteArrayOf(73, 68, 51, 4, 0, 0, 0, 0, 0, -128))
+    }
+
+    @Test fun cleanMp3_v24FooterPreservesAudio() {
+        val audio = byteArrayOf(1, 2, 3, 4)
+        val header = byteArrayOf(73, 68, 51, 4, 0, 16, 0, 0, 0, 2)
+        assertTrue(audio.contentEquals(MetadataEngine.cleanMp3(header + ByteArray(12) + audio).bytes))
+    }
+
     @Test
     fun kindOf_detectsFormats() {
         assertEquals(MetadataEngine.Kind.IMAGE, MetadataEngine.kindOf("a.JPG", "application/octet-stream"))
