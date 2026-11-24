@@ -53,7 +53,6 @@ internal fun AuroraPageMotion(page: Any, modifier: Modifier, content: @Composabl
         val active = enabled && !settled
         Box(modifier.then(if (active) Modifier.graphicsLayer {
             val fraction = FastOutSlowInEasing.transform(entrance.value)
-            alpha = 0.84f + 0.16f * fraction
             translationX = 8.dp.toPx() * (1 - fraction)
         } else Modifier)) {
             CompositionLocalProvider(LocalPageEntrance provides if (active) entrance.asState() else null, content = content)

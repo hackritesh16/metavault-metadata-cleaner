@@ -6,12 +6,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -46,14 +49,20 @@ internal fun AuroraBackground(theme: String, scrollOffset: () -> Float, photo: B
             val colors = palettes[theme] ?: palettes.getValue("Aurora")
             val motion = LocalMotionEnabled.current
             if (motion) {
-                val drift = remember { Animatable(0f) }
+                var drift by remember { mutableFloatStateOf(0f) }
+                var direction by remember { mutableFloatStateOf(1f) }
                 LaunchedEffect(colors) {
-                    // A single slow settle per palette change. No idle frame loop.
-                    val target = if (drift.targetValue > 0f) -1f else 1f
-                    drift.animateTo(target, tween(12_000, easing = LinearEasing))
+                    val start = drift
+                    val target = direction
+                    direction = -direction
+                    // At this amplitude each step is under 1 dp. Don't schedule 720 frames for 9 dp of travel.
+                    for (step in 1..24) {
+                        delay(500)
+                        withFrameMillis { drift = start + (target - start) * step / 24f }
+                    }
                 }
                 Crossfade(colors, animationSpec = tween(320), label = "aurora palette") { palette ->
-                    Glows(palette, scrollOffset) { drift.value }
+                    Glows(palette, scrollOffset) { drift }
                 }
             } else {
                 Glows(colors, scrollOffset = { 0f }, drift = { 0f })
