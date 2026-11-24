@@ -1217,25 +1217,52 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
         Page.ABOUT -> Page.SETTINGS
         else -> page
     }
+    val tabs = remember { listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS) }
+    val selectedIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
+    val motionEnabled = LocalMotionEnabled.current
+    val startEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex.toFloat()) }
+    val endEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex + 1f) }
+    var previousIndex by remember { mutableIntStateOf(selectedIndex) }
+    LaunchedEffect(selectedIndex, motionEnabled) {
+        val movingRight = selectedIndex >= previousIndex
+        previousIndex = selectedIndex
+        if (!motionEnabled) {
+            startEdge.snapTo(selectedIndex.toFloat())
+            endEdge.snapTo(selectedIndex + 1f)
+        } else {
+            val lead = androidx.compose.animation.core.spring<Float>(
+                dampingRatio = 0.6f, stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
+            val lag = androidx.compose.animation.core.spring<Float>(
+                dampingRatio = 0.75f, stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
+            launch { startEdge.animateTo(selectedIndex.toFloat(), if (movingRight) lag else lead) }
+            launch { endEdge.animateTo(selectedIndex + 1f, if (movingRight) lead else lag) }
+        }
+    }
     Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(
         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)), contentAlignment = Alignment.Center) {
         BoxWithConstraints(Modifier.widthIn(max = AuroraLayout.barMaxWidth).fillMaxWidth()
             .padding(horizontal = AuroraLayout.padding, vertical = AuroraLayout.small)
             .auroraGlass(shape).padding(AuroraLayout.small)) {
-            val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
             val tabWidth = (maxWidth / tabs.size).coerceAtLeast(AuroraLayout.touchTarget)
             val overflow = if (maxWidth < AuroraLayout.touchTarget * tabs.size)
                 Modifier.horizontalScroll(rememberScrollState()) else Modifier
             Box(overflow) {
                 Box(Modifier.width(tabWidth * tabs.size)) {
-                    val target = tabWidth * tabs.indexOf(activeTab).coerceAtLeast(0)
-                    val offset = if (LocalMotionEnabled.current) animateDpAsState(target,
-                        tween(NavigationMillis, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
-                        else rememberUpdatedState(target)
-                    Box(Modifier.matchParentSize()) {
-                        Box(Modifier.offset { IntOffset(offset.value.roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
-                            .padding(horizontal = 2.dp, vertical = 1.dp)
-                            .background(Color.White.copy(alpha = 0.10f), AuroraLayout.buttonShape))
+                    Canvas(Modifier.matchParentSize()) {
+                        val cell = size.width / tabs.size
+                        val inset = 2.dp.toPx()
+                        val stretch = ((endEdge.value - startEdge.value) - 1f).coerceIn(0f, 1f)
+                        val pillHeight = size.height * (1f - 0.10f * stretch)
+                        val left = startEdge.value * cell + inset
+                        val right = endEdge.value * cell - inset
+                        if (right > left) {
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.10f),
+                                topLeft = Offset(left, (size.height - pillHeight) / 2f),
+                                size = androidx.compose.ui.geometry.Size(right - left, pillHeight),
+                                cornerRadius = CornerRadius(pillHeight / 2f, pillHeight / 2f)
+                            )
+                        }
                     }
                     Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
                         tabs.forEach { item ->
@@ -1254,7 +1281,11 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                                 },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center) {
-                                Icon(icon, null, tint = if (selected) TextMain else Muted, modifier = Modifier.size(20.dp).selectionMotion(selected))
+                                val tint by androidx.compose.animation.animateColorAsState(
+                                    if (selected) TextMain else Muted,
+                                    animationSpec = tween(if (motionEnabled) 220 else 0),
+                                    label = "liquid-nav-tint")
+                                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp).selectionMotion(selected))
                                 Text(item.label, color = if (selected) AccentSoft else Muted,
                                     style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
                             }
