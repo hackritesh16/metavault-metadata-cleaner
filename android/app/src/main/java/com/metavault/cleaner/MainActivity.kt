@@ -25,7 +25,11 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -33,6 +37,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -40,6 +45,7 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -55,9 +61,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.text.font.Font
@@ -568,36 +576,12 @@ private fun MetaVaultApp() {
                 containerColor = Color.Transparent,
                 snackbarHost = { SnackbarHost(snackbar) },
                 bottomBar = {
-                    Column {
-                        HorizontalDivider(color = Line)
-                        NavigationBar(containerColor = Surface1, tonalElevation = 0.dp) {
-                            val activeTab = when (page) {
-                                Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
-                                Page.ABOUT -> Page.SETTINGS
-                                else -> page
-                            }
-                            listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS).forEach { item ->
-                                val icon = when (item) {
-                                    Page.HOME -> Icons.Default.Home
-                                    Page.BROWSE -> Icons.Default.FolderOpen
-                                    Page.CLEANER -> Icons.Default.AutoAwesome
-                                    Page.HISTORY -> Icons.Default.History
-                                    else -> Icons.Default.Settings
-                                }
-                                NavigationBarItem(
-                                    selected = activeTab == item,
-                                    onClick = { page = item },
-                                    icon = { Icon(icon, contentDescription = item.label) },
-                                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = AccentSoft, selectedTextColor = AccentSoft,
-                                        indicatorColor = AccentTint, unselectedIconColor = Muted,
-                                        unselectedTextColor = Muted
-                                    )
-                                )
-                            }
-                        }
+                    val activeTab = when (page) {
+                        Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
+                        Page.ABOUT -> Page.SETTINGS
+                        else -> page
                     }
+                    LiquidNavBar(selected = activeTab, onSelect = { page = it })
                 }
             ) { padding ->
                 Column(
@@ -738,6 +722,98 @@ private fun MetaVaultApp() {
                 }
             }
         }
+    }
+}
+
+// ---------- Liquid bottom navigation ----------
+
+private data class NavTab(val page: Page, val icon: ImageVector)
+
+/**
+ * Bottom bar with a liquid pill. When the selection changes, the pill edge in the direction of travel
+ * springs ahead first and the other edge follows, so the pill stretches while it slides and then
+ * squashes back into place with a small wobble.
+ */
+@Composable
+private fun LiquidNavBar(selected: Page, onSelect: (Page) -> Unit) {
+    val tabs = remember {
+        listOf(
+            NavTab(Page.HOME, Icons.Default.Home),
+            NavTab(Page.BROWSE, Icons.Default.FolderOpen),
+            NavTab(Page.CLEANER, Icons.Default.AutoAwesome),
+            NavTab(Page.HISTORY, Icons.Default.History),
+            NavTab(Page.SETTINGS, Icons.Default.Settings)
+        )
+    }
+    val index = tabs.indexOfFirst { it.page == selected }.coerceAtLeast(0)
+    // Edges are measured in tab units: the pill covers [startEdge, endEdge], so a settled pill spans exactly one tab.
+    val startEdge = remember { Animatable(index.toFloat()) }
+    val endEdge = remember { Animatable(index + 1f) }
+    var previous by remember { mutableStateOf(index) }
+    LaunchedEffect(index) {
+        val movingRight = index >= previous
+        previous = index
+        val lead = spring<Float>(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium)
+        val lag = spring<Float>(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow)
+        launch { startEdge.animateTo(index.toFloat(), if (movingRight) lag else lead) }
+        launch { endEdge.animateTo(index + 1f, if (movingRight) lead else lag) }
+    }
+    val pill = AccentSoft.copy(alpha = if (Pal.dark) 0.22f else 0.14f)
+
+    Column(Modifier.fillMaxWidth().background(Surface1).navigationBarsPadding()) {
+        HorizontalDivider(color = Line)
+        Box(Modifier.fillMaxWidth().height(68.dp)) {
+            Canvas(Modifier.matchParentSize()) {
+                val cell = size.width / tabs.size
+                val inset = 6.dp.toPx()
+                // The extra width while moving makes the pill slightly flatter, like a drop of liquid being stretched.
+                val stretch = ((endEdge.value - startEdge.value) - 1f).coerceIn(0f, 1f)
+                val pillHeight = (size.height - 16.dp.toPx()) * (1f - 0.10f * stretch)
+                val left = startEdge.value * cell + inset
+                val right = endEdge.value * cell - inset
+                if (right > left) {
+                    drawRoundRect(
+                        color = pill,
+                        topLeft = Offset(left, (size.height - pillHeight) / 2f),
+                        size = androidx.compose.ui.geometry.Size(right - left, pillHeight),
+                        cornerRadius = CornerRadius(pillHeight / 2f, pillHeight / 2f)
+                    )
+                }
+            }
+            Row(Modifier.matchParentSize()) {
+                tabs.forEach { tab ->
+                    LiquidNavItem(tab = tab, active = tab.page == selected, onClick = { onSelect(tab.page) })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.LiquidNavItem(tab: NavTab, active: Boolean, onClick: () -> Unit) {
+    val tint by animateColorAsState(if (active) AccentSoft else Muted, tween(220), label = "navTint")
+    val scale by animateFloatAsState(
+        if (active) 1.14f else 1f,
+        spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "navScale"
+    )
+    Column(
+        Modifier.weight(1f).fillMaxHeight().selectable(
+            selected = active,
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            role = Role.Tab,
+            onClick = onClick
+        ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            tab.icon, contentDescription = null, tint = tint,
+            modifier = Modifier.size(24.dp).graphicsLayer { scaleX = scale; scaleY = scale }
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(tab.page.label, color = tint, style = MaterialTheme.typography.labelMedium, maxLines = 1)
     }
 }
 
