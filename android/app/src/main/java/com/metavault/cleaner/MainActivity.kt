@@ -30,7 +30,6 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -75,7 +74,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -98,9 +96,7 @@ private val AccentSoft = Color(0xFF9DB5FF)
 private val AccentTint = Color(0x333A63E8)
 private val Clean = Color(0xFF3DDC97)
 private val Warn = Color(0xFFFFB454)
-private val Paper = Color(0xFFF3F5F8)
 private val PaperInk = Color(0xFF0B1018)
-private val PaperMuted = Color(0xFF4B586D)
 
 // Fonts are bundled in res/font so the app never downloads them.
 private val DisplayFont = FontFamily(
@@ -686,7 +682,12 @@ private fun MetaVaultApp() {
                         ) {
                             AnimatedContent(targetState = page, label = "page") { current ->
                                 when (current) {
-                                    Page.HOME -> HomePage(onStart = { page = Page.BROWSE })
+                                    Page.HOME -> HomePage(
+                                        currentName = selectedUri?.let { fileName },
+                                        onInspect = { picker.launch(arrayOf("*/*")) },
+                                        onBrowse = { page = Page.BROWSE },
+                                        onResumeFile = { page = Page.CLEANER }
+                                    )
                                     Page.BROWSE -> BrowsePage(counts = counts, accessByPage = accessByPage, onCategory = { page = it }, onPick = { picker.launch(arrayOf("*/*")) })
                                     Page.CLEANER -> CleanerPage(
                                         fileName = fileName, mime = mime, hasFile = selectedUri != null,
@@ -870,60 +871,23 @@ private fun Header() {
     }
 }
 
-// The one memorable moment: example metadata that gets covered by redaction bars.
 @Composable
-private fun RedactionCard() {
-    val reduceMotion = !android.animation.ValueAnimator.areAnimatorsEnabled()
-    val progress = remember { Animatable(if (reduceMotion) 1f else 0f) }
-    LaunchedEffect(reduceMotion) {
-        if (reduceMotion) progress.snapTo(1f)
-        else {
-            delay(600)
-            progress.animateTo(1f, tween(durationMillis = 2200))
-        }
-    }
-    val rows = listOf(
-        "Camera" to "Pixel 8 Pro",
-        "Taken" to "9 Nov 2026, 18:42",
-        "Location" to "28.6139 N, 77.2090 E",
-        "Software" to "Snapseed 2.0",
-        "Author" to "Priya Nair"
-    )
-    Column(Modifier.fillMaxWidth().background(Paper, RoundedCornerShape(16.dp)).padding(horizontal = 18.dp, vertical = 16.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("PHOTO_METADATA", color = PaperInk, fontFamily = MonoFont, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text("SAMPLE", color = PaperMuted, style = MaterialTheme.typography.labelSmall)
-        }
-        rows.forEachIndexed { index, (label, value) ->
-            HorizontalDivider(color = Color(0xFFD2D9E3), modifier = Modifier.padding(top = 12.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(label, color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(84.dp))
-                Box {
-                    Text(value, color = PaperInk, fontFamily = MonoFont, fontSize = 13.sp)
-                    val fraction = (progress.value * rows.size - index).coerceIn(0f, 1f)
-                    Box(Modifier.matchParentSize()) {
-                        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(PaperInk, RoundedCornerShape(2.dp)))
-                    }
+private fun HomePage(
+    currentName: String?, onInspect: () -> Unit, onBrowse: () -> Unit, onResumeFile: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        PageHeading("Inspect your files", "Choose a file to see its metadata and available cleaning options.")
+        PrimaryButton("Inspect a file", Icons.Default.Search, onInspect)
+        SecondaryButton("Browse by category", Icons.Default.FolderOpen, onBrowse)
+        if (currentName != null) {
+            VaultCard(onClick = onResumeFile) {
+                Text("Continue with current file", color = Muted, style = MaterialTheme.typography.labelLarge)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(currentName, modifier = Modifier.weight(1f), color = TextMain,
+                        style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Icon(Icons.Default.ChevronRight, null, tint = Muted)
                 }
             }
-        }
-        Text("Example only · choose a file to inspect its actual metadata.", color = PaperMuted, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 14.dp))
-    }
-}
-
-// Home has one job: explain the idea and send people to pick a file. The tabs below do the rest.
-@Composable
-private fun HomePage(onStart: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Share the photo.\nKeep the details private.", color = TextMain, style = MaterialTheme.typography.headlineMedium)
-            Text("See what your files reveal, then clean a copy before you share. Your files stay on this device.", color = Muted, style = MaterialTheme.typography.bodyLarge)
-        }
-        RedactionCard()
-        PrimaryButton("Browse files", Icons.Default.FolderOpen, onStart)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            HomeTrustItem(Modifier.weight(1f), Icons.Default.PhonelinkLock, "On device")
-            HomeTrustItem(Modifier.weight(1f), Icons.Default.FileCopy, "Save a copy")
         }
     }
 }
@@ -1464,15 +1428,6 @@ private fun SecondaryButton(label: String, icon: ImageVector, onClick: () -> Uni
         Icon(icon, null)
         Spacer(Modifier.width(9.dp))
         Text(label, fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-    }
-}
-
-@Composable
-private fun HomeTrustItem(modifier: Modifier, icon: ImageVector, label: String) {
-    Row(modifier.heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(icon, null, tint = Clean, modifier = Modifier.size(20.dp))
-        Text(label, color = TextMain, style = MaterialTheme.typography.labelLarge, maxLines = 2)
     }
 }
 
