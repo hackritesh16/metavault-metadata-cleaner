@@ -54,10 +54,10 @@ private fun weightedFont(resource: Int, weight: FontWeight) = Font(
     variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight))
 )
 
-internal val DisplayFont = FontFamily(weightedFont(R.font.space_grotesk, FontWeight.Bold))
+internal val DisplayFont = FontFamily(weightedFont(R.font.inter_variable, FontWeight.Bold))
 private val BodyFont = FontFamily(
-    weightedFont(R.font.manrope, FontWeight.Normal), weightedFont(R.font.manrope, FontWeight.Medium),
-    weightedFont(R.font.manrope, FontWeight.SemiBold)
+    weightedFont(R.font.nunito_variable, FontWeight.Normal), weightedFont(R.font.nunito_variable, FontWeight.Medium),
+    weightedFont(R.font.nunito_variable, FontWeight.SemiBold)
 )
 internal val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
 

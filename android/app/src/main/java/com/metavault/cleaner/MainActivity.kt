@@ -59,6 +59,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -1217,25 +1218,74 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
         Page.ABOUT -> Page.SETTINGS
         else -> page
     }
+    val tabs = remember { listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS) }
+    val selectedIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
+    val motionEnabled = LocalMotionEnabled.current
+    val startEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex.toFloat()) }
+    val endEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex + 1f) }
+    var previousIndex by remember { mutableIntStateOf(selectedIndex) }
+    LaunchedEffect(selectedIndex, motionEnabled) {
+        val movingRight = selectedIndex >= previousIndex
+        previousIndex = selectedIndex
+        if (!motionEnabled) {
+            startEdge.snapTo(selectedIndex.toFloat())
+            endEdge.snapTo(selectedIndex + 1f)
+        } else {
+            val lead = androidx.compose.animation.core.spring<Float>(
+                dampingRatio = 0.6f, stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
+            val lag = androidx.compose.animation.core.spring<Float>(
+                dampingRatio = 0.75f, stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
+            launch { startEdge.animateTo(selectedIndex.toFloat(), if (movingRight) lag else lead) }
+            launch { endEdge.animateTo(selectedIndex + 1f, if (movingRight) lead else lag) }
+        }
+    }
     Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(
         WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)), contentAlignment = Alignment.Center) {
         BoxWithConstraints(Modifier.widthIn(max = AuroraLayout.barMaxWidth).fillMaxWidth()
             .padding(horizontal = AuroraLayout.padding, vertical = AuroraLayout.small)
             .auroraGlass(shape).padding(AuroraLayout.small)) {
-            val tabs = listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS)
             val tabWidth = (maxWidth / tabs.size).coerceAtLeast(AuroraLayout.touchTarget)
             val overflow = if (maxWidth < AuroraLayout.touchTarget * tabs.size)
                 Modifier.horizontalScroll(rememberScrollState()) else Modifier
             Box(overflow) {
                 Box(Modifier.width(tabWidth * tabs.size)) {
-                    val target = tabWidth * tabs.indexOf(activeTab).coerceAtLeast(0)
-                    val offset = if (LocalMotionEnabled.current) animateDpAsState(target,
-                        tween(NavigationMillis, easing = FastOutSlowInEasing), label = "bottom-nav-slide")
-                        else rememberUpdatedState(target)
-                    Box(Modifier.matchParentSize()) {
-                        Box(Modifier.offset { IntOffset(offset.value.roundToPx(), 0) }.width(tabWidth).fillMaxHeight()
-                            .padding(horizontal = 2.dp, vertical = 1.dp)
-                            .background(Color.White.copy(alpha = 0.10f), AuroraLayout.buttonShape))
+                    Canvas(Modifier.matchParentSize()) {
+                        val cell = size.width / tabs.size
+                        val inset = 2.dp.toPx()
+                        val stretch = ((endEdge.value - startEdge.value) - 1f).coerceIn(0f, 1f)
+                        val pillHeight = (size.height - 4.dp.toPx()) * (1f - 0.13f * stretch)
+                        val left = startEdge.value * cell + inset
+                        val right = endEdge.value * cell - inset
+                        if (right > left) {
+                            val top = (size.height - pillHeight) / 2f
+                            val pillSize = androidx.compose.ui.geometry.Size(right - left, pillHeight)
+                            val pillCorner = CornerRadius(pillHeight / 2f, pillHeight / 2f)
+                            // Strong enough to remain visible over the Aurora backdrop; the two
+                            // independently animated edges create the liquid stretch and recoil.
+                            drawRoundRect(
+                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                                    listOf(AccentSoft.copy(alpha = 0.42f),
+                                        Color.White.copy(alpha = 0.26f),
+                                        AccentSoft.copy(alpha = 0.34f)),
+                                    startX = left, endX = right
+                                ),
+                                topLeft = Offset(left, top), size = pillSize,
+                                cornerRadius = pillCorner
+                            )
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.52f),
+                                topLeft = Offset(left, top), size = pillSize,
+                                cornerRadius = pillCorner,
+                                style = Stroke(width = 1.dp.toPx())
+                            )
+                            drawRoundRect(
+                                color = Color.White.copy(alpha = 0.20f),
+                                topLeft = Offset(left + 8.dp.toPx(), top + 3.dp.toPx()),
+                                size = androidx.compose.ui.geometry.Size(
+                                    (right - left - 16.dp.toPx()).coerceAtLeast(0f), 2.dp.toPx()),
+                                cornerRadius = CornerRadius(2.dp.toPx())
+                            )
+                        }
                     }
                     Row(Modifier.fillMaxWidth().selectableGroup(), verticalAlignment = Alignment.CenterVertically) {
                         tabs.forEach { item ->
@@ -1254,7 +1304,20 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                                 },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center) {
-                                Icon(icon, null, tint = if (selected) TextMain else Muted, modifier = Modifier.size(20.dp).selectionMotion(selected))
+                                val tint by androidx.compose.animation.animateColorAsState(
+                                    if (selected) TextMain else Muted,
+                                    animationSpec = tween(if (motionEnabled) 220 else 0),
+                                    label = "liquid-nav-tint")
+                                val iconScale by androidx.compose.animation.core.animateFloatAsState(
+                                    targetValue = if (selected) 1.17f else 1f,
+                                    animationSpec = if (motionEnabled)
+                                        androidx.compose.animation.core.spring(
+                                            dampingRatio = 0.55f,
+                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
+                                    else androidx.compose.animation.core.snap(),
+                                    label = "liquid-nav-icon-scale")
+                                Icon(icon, null, tint = tint, modifier = Modifier.size(20.dp)
+                                    .graphicsLayer { scaleX = iconScale; scaleY = iconScale })
                                 Text(item.label, color = if (selected) AccentSoft else Muted,
                                     style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
                             }
