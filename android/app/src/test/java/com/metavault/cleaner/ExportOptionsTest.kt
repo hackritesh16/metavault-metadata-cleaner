@@ -37,7 +37,7 @@ class ExportOptionsTest {
         }
     }
 
-    @Test fun duplicateOverwriteRechecksIdentityBeforeWriting() = runBlocking {
+    @Test fun duplicateOverwriteRechecksIdentityBeforeWriting() = runBlocking<Unit> {
         var queries = 0
         val written = exportNamed("image", "png", { queries++; listOf(1) }, { true },
             { assertTrue(it.canOverwrite); CollisionChoice.Overwrite },
