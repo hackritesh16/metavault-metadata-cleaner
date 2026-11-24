@@ -209,16 +209,18 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
     val saved = model.results.count { it.status == BatchStatus.SAVED }
     AlertDialog(
         onDismissRequest = { if (!model.running) model.visible = false },
-        title = { Text(when {
+        title = { Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(AuroraLayout.compact)) {
+            if (model.finished && saved > 0) AuroraSuccessMark()
+            Text(when {
             model.finished -> "Batch results"
             model.running -> "Processing files"
             total > 0 -> "Review export"
             else -> "Batch cleaner"
-        }) },
+        }) } },
         text = {
             LazyColumn(Modifier.fillMaxWidth().heightIn(max = 400.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 item {
-                    if (model.running) LinearProgressIndicator(progress = { done.toFloat() / total.coerceAtLeast(1) },
+                    if (model.running) AuroraProgress(done, total,
                         modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp))
                     Text(when {
                         model.loading -> "Reading file names…"
@@ -269,7 +271,7 @@ internal fun BatchCleanerDialog(model: BatchCleanerModel) {
         },
         confirmButton = {
             when {
-                model.loading -> Text("Loading…")
+                model.loading -> AuroraLoadingLabel("Loading…")
                 model.running -> AuroraTextButton(enabled = !model.stopRequested, onClick = model::stop) {
                     Text(if (model.stopRequested) "Stopping…" else "Stop after this file")
                 }

@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -95,5 +96,7 @@ private val AuroraScheme = darkColorScheme(
 
 @Composable
 internal fun AuroraTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = AuroraScheme, typography = AuroraTypography, content = content)
+    CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled()) {
+        MaterialTheme(colorScheme = AuroraScheme, typography = AuroraTypography, content = content)
+    }
 }

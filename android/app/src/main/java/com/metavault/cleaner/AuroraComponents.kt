@@ -46,7 +46,7 @@ internal fun AuroraGlassCard(
 ) {
     val action = if (onClick == null) Modifier else Modifier
         .heightIn(min = AuroraLayout.touchTarget).clickable(role = Role.Button, onClick = onClick)
-    Column(modifier.fillMaxWidth().auroraGlass(AuroraLayout.cardShape).then(action).padding(AuroraLayout.padding),
+    Column(modifier.fillMaxWidth().cardEntrance().auroraGlass(AuroraLayout.cardShape).then(action).padding(AuroraLayout.padding),
         verticalArrangement = Arrangement.spacedBy(AuroraLayout.gap), content = content)
 }
 
@@ -64,10 +64,12 @@ internal fun AuroraGlassButton(
             containerColor = Color.White.copy(alpha = if (pressed) 0.13f else if (primary) 0.055f else 0f),
             contentColor = TextMain, disabledContainerColor = Color.Transparent, disabledContentColor = Muted),
         elevation = null) {
-        if (loading) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp, color = Muted)
-        else Icon(icon, null, tint = if (!enabled) Muted else if (primary) AccentSoft else TextMain)
-        Spacer(Modifier.width(AuroraLayout.compact))
-        Text(label)
+        Row(Modifier.pressMotion(interaction), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(AuroraLayout.compact)) {
+            if (loading) AuroraLoadingIcon()
+            else Icon(icon, null, tint = if (!enabled) Muted else if (primary) AccentSoft else TextMain)
+            Text(label)
+        }
     }
 }
 
@@ -90,8 +92,10 @@ internal fun AuroraIconContainer(icon: ImageVector, modifier: Modifier = Modifie
 // On translucent surfaces, cyan maintains text contrast over a wider range of backgrounds than violet.
 @Composable
 internal fun AuroraTextButton(onClick: () -> Unit, enabled: Boolean = true, content: @Composable RowScope.() -> Unit) {
-    TextButton(onClick = onClick, enabled = enabled, colors = ButtonDefaults.textButtonColors(contentColor = AccentSoft),
-        content = content)
+    val interaction = remember { MutableInteractionSource() }
+    TextButton(onClick = onClick, enabled = enabled, interactionSource = interaction,
+        modifier = Modifier.sizeIn(minWidth = AuroraLayout.touchTarget, minHeight = AuroraLayout.touchTarget), colors = ButtonDefaults.textButtonColors(contentColor = AccentSoft),
+    ) { Row(Modifier.pressMotion(interaction), verticalAlignment = Alignment.CenterVertically, content = content) }
 }
 
 @Composable
@@ -101,6 +105,9 @@ internal fun AuroraOutlinedButton(
     colors: ButtonColors = ButtonDefaults.outlinedButtonColors(contentColor = AccentSoft),
     content: @Composable RowScope.() -> Unit
 ) {
-    OutlinedButton(onClick = onClick, modifier = modifier, enabled = enabled, shape = shape, border = border,
-        colors = colors, content = content)
+    val interaction = remember { MutableInteractionSource() }
+    OutlinedButton(onClick = onClick, modifier = modifier.sizeIn(minWidth = AuroraLayout.touchTarget, minHeight = AuroraLayout.touchTarget),
+        enabled = enabled, shape = shape, border = border, interactionSource = interaction, colors = colors) {
+        Row(Modifier.pressMotion(interaction), verticalAlignment = Alignment.CenterVertically, content = content)
+    }
 }
