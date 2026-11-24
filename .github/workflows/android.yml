@@ -12,6 +12,11 @@ on:
       - "android/**"
       - ".github/workflows/android.yml"
   workflow_dispatch:
+    inputs:
+      motion_smoke:
+        description: Run the constrained Android emulator motion check
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,3 +55,36 @@ jobs:
       # Runs after the APK is uploaded, so a failing test turns the run red without hiding the APK.
       - name: Run unit tests
         run: gradle -p android testDebugUnitTest
+
+  motion-smoke:
+    name: Motion smoke test (API 29, two cores)
+    if: github.event_name == 'workflow_dispatch' && inputs.motion_smoke
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: MetaVault-debug-apk
+          path: apk
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666"' | sudo tee /etc/udev/rules.d/99-kvm.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@b530d96654c385303d652368551fb075bc2f0b6b # v2.35.0
+        with:
+          api-level: 29
+          arch: x86_64
+          target: default
+          cores: 2
+          ram-size: 1536M
+          disable-animations: false
+          script: python3 android/qa/motion_smoke.py apk/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: motion-frame-stats
+          path: motion-report/
+          if-no-files-found: ignore
