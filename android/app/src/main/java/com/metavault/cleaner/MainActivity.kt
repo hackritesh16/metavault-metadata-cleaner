@@ -6,7 +6,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.saveable.rememberSaveable
 import android.Manifest
 import android.app.Activity
-import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.IntentSender
@@ -266,37 +265,6 @@ private fun mimeForExt(ext: String): String = when (ext.lowercase(Locale.ROOT)) 
 
 private fun isImageExt(ext: String) = ext.lowercase(Locale.ROOT) in setOf("jpg", "jpeg", "png", "webp")
 
-@androidx.annotation.RequiresApi(29)
-private fun saveToGallery(context: Context, bytes: ByteArray, displayName: String, mime: String): Uri {
-    val resolver = context.contentResolver
-    val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
-        put(MediaStore.Images.Media.MIME_TYPE, mime)
-        put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/MetaVault")
-        put(MediaStore.Images.Media.IS_PENDING, 1)
-    }
-    val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: error("Could not create the new image")
-    try {
-        resolver.openOutputStream(uri)?.use { it.write(bytes) } ?: error("Could not open the new image for writing")
-        values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-        resolver.update(uri, values, null, null)
-    } catch (e: Exception) {
-        resolver.delete(uri, null, null)
-        throw e
-    }
-    return uri
-}
-
-private fun backupOriginal(context: Context, uri: Uri, name: String): File {
-    val dir = File(context.filesDir, "backups").apply { mkdirs() }
-    val file = File(dir, System.currentTimeMillis().toString() + "__" + sanitizeName(name) + ".bak")
-    context.contentResolver.openInputStream(uri)?.use { input -> file.outputStream().use { out -> input.copyTo(out) } }
-        ?: error("Could not read the original")
-    File(dir, file.name + ".uri").writeText(uri.toString())
-    return file
-}
-
 private fun loadBackups(context: Context): List<BackupEntry> {
     val dir = File(context.filesDir, "backups")
     return (dir.listFiles()?.toList() ?: emptyList()).filter { it.name.endsWith(".bak") }.mapNotNull { f ->
@@ -374,7 +342,6 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     val accessByPage = remember(reloadTick) { LibraryPages.associateWith { mediaAccess(context, it) } }
     val counts = remember(deviceMedia) { deviceMedia.groupingBy { it.category }.eachCount() }
     val kind = if (selectedUri != null) MetadataEngine.kindOf(fileName, mime) else MetadataEngine.Kind.UNSUPPORTED
-    val saveName = sanitizeName(outBase) + "." + outExt
 
     fun say(message: String) {
         status = message
@@ -402,7 +369,10 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         lifecycle?.addObserver(observer)
         onDispose { lifecycle?.removeObserver(observer) }
     }
-    LaunchedEffect(reloadTick) {
+    LaunchedEffect(batch.refresh) {
+        if (batch.refresh > 0) thumbCache.evictAll()
+    }
+    LaunchedEffect(reloadTick, batch.refresh) {
         libraryLoading = true
         val (list, saved) = withContext(Dispatchers.IO) { loadDeviceMedia(context) to loadBackups(context) }
         deviceMedia = list
@@ -410,7 +380,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         libraryLoading = false
     }
 
-    LaunchedEffect(selectedUri, hasLocationAccess) {
+    LaunchedEffect(selectedUri, hasLocationAccess, batch.refresh, metadataReloadTick) {
         val uri = selectedUri
         fields = null
         inspectError = null
@@ -472,23 +442,6 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
             page = Page.CLEANER
         }
     }
-    val saver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
-        val bytes = readyBytes
-        if (uri != null && bytes != null) {
-            scope.launch {
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openOutputStream(uri)?.use { it.write(bytes) }
-                            ?: error("Could not open destination")
-                    }
-                }.onSuccess {
-                    say("Saved as a new file. Original file is untouched.")
-                    history = listOf(HistoryEntry(fileName, lastAction)) + history
-                    readyBytes = null
-                }.onFailure { say("Save failed: ${it.message}") }
-            }
-        }
-    }
     val writeConsentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) retryOverwrite.value?.invoke()
         else { say("Permission to overwrite was not granted. Your original is unchanged."); busy = false }
@@ -499,13 +452,12 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         readyBytes = null; status = "File selected."; page = Page.CLEANER
     }
 
-    fun overwriteOriginal(uri: Uri, bytes: ByteArray, label: String, detail: String, retried: Boolean = false) {
+    fun overwriteOriginal(uri: Uri, bytes: ByteArray, label: String, detail: String, backup: File, retried: Boolean = false) {
         scope.launch {
             busy = true
             val outcome: Pair<String, IntentSender?> = withContext(Dispatchers.IO) {
                 try {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-                        ?: error("Could not open the original for writing")
+                    writeWithRecovery(context, uri, bytes, backup)
                     "ok" to null
                 } catch (e: SecurityException) {
                     if (Build.VERSION.SDK_INT >= 29 && e is android.app.RecoverableSecurityException) "consent" to e.userAction.actionIntent.intentSender
@@ -524,11 +476,12 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                     history = listOf(HistoryEntry(label, detail)) + history
                     readyBytes = null
                     thumbCache.evictAll()
+                    metadataReloadTick++
                     reloadTick++
                     busy = false
                 }
                 code == "consent" && !retried -> {
-                    retryOverwrite.value = { overwriteOriginal(uri, bytes, label, detail, true) }
+                    retryOverwrite.value = { overwriteOriginal(uri, bytes, label, detail, backup, true) }
                     val request = sender ?: runCatching {
                         if (Build.VERSION.SDK_INT >= 30) MediaStore.createWriteRequest(context.contentResolver, listOf(uri)).intentSender else null
                     }.getOrNull()
@@ -547,37 +500,45 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         if (uri == null || bytes == null) return
         scope.launch {
             busy = true; status = "Backing up the original first…"
-            val backupFailure = try {
-                withContext(Dispatchers.IO) { backupOriginal(context, originalUri(context, uri), fileName) }
-                null
-            } catch (e: Exception) { e.message ?: "unknown error" }
-            if (backupFailure != null) {
-                say("Could not create a backup, so nothing was overwritten: $backupFailure")
-                busy = false
-            } else {
+            try {
+                val backup = withContext(Dispatchers.IO) { backupOriginal(context, uri, fileName) }
                 backups = withContext(Dispatchers.IO) { loadBackups(context) }
-                overwriteOriginal(uri, bytes, fileName, "$lastAction (original overwritten)")
+                overwriteOriginal(uri, bytes, fileName, "$lastAction (original overwritten)", backup)
+            } catch (e: Exception) {
+                say("Could not back up the original: ${e.message}")
+                busy = false
             }
         }
     }
 
-    fun saveAsNew() {
+    fun saveSingleCopy(tree: Uri?) {
         val bytes = readyBytes ?: return
-        if (isImageExt(outExt) && Build.VERSION.SDK_INT >= 29) {
-            scope.launch {
-                busy = true; status = "Saving new image…"
-                runCatching {
-                    withContext(Dispatchers.IO) { saveToGallery(context, bytes, saveName, mimeForExt(outExt)) }
-                }.onSuccess {
-                    say("Saved as a new image in Pictures/MetaVault. Original file is untouched.")
-                    history = listOf(HistoryEntry(saveName, "$lastAction (new image)")) + history
+        val source = selectedUri ?: return
+        val stem = outBase
+        val ext = outExt
+        val outputMime = BatchFormat.resolve("file.$ext", null)?.mime ?: mimeForExt(ext)
+        if (busy || !validStem(stem)) return
+        busy = true
+        scope.launch {
+            try {
+                val name = withContext(Dispatchers.IO) {
+                    saveCopy(context, tree, bytes, stem, ext, outputMime, SelectedSources(context, listOf(source)), batch::decide)
+                }
+                if (name == null) say("Skipped. Your processed file is still ready.")
+                else {
+                    say("Saved and verified $name.")
+                    history = listOf(HistoryEntry(name, lastAction)) + history
                     readyBytes = null
-                    reloadTick++
-                }.onFailure { say("Save failed: ${it.message}") }
+                }
+            } catch (e: Exception) {
+                say("Save failed: ${e.localizedMessage}. You can choose another folder or name.")
+            } finally {
                 busy = false
+                reloadTick++
             }
-        } else saver.launch(saveName)
+        }
     }
+    val singleFolder = rememberLauncherForActivityResult(LocalFolder) { uri -> if (uri != null) saveSingleCopy(uri) }
 
     fun restoreBackup(entry: BackupEntry) {
         if (busy) return
@@ -585,7 +546,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         scope.launch {
             val bytes = withContext(Dispatchers.IO) { runCatching { entry.file.readBytes() }.getOrNull() }
             if (bytes == null) { busy = false; say("The backup file could not be read."); return@launch }
-            overwriteOriginal(Uri.parse(entry.uriString), bytes, entry.name, "Original restored from backup")
+            overwriteOriginal(Uri.parse(entry.uriString), bytes, entry.name, "Original restored from backup", entry.file)
         }
     }
 
@@ -634,7 +595,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                 onDismissRequest = { confirmOverwrite = false },
                 containerColor = Surface2,
                 title = { Text("Overwrite original?") },
-                text = { Text("The original file will be replaced by the processed version. MetaVault first stores a backup inside the app, and you can restore it from History.") },
+                text = { Text("$fileName will be replaced by the processed version. MetaVault first stores a backup inside the app, and you can restore it from History.") },
                 confirmButton = { TextButton(onClick = { confirmOverwrite = false; startOverwrite() }) { Text("Overwrite", color = Warn) } },
                 dismissButton = { TextButton(onClick = { confirmOverwrite = false }) { Text("Cancel") } }
             )
@@ -686,6 +647,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                 when (current) {
                                     Page.HOME -> HomePage(
                                         currentName = selectedUri?.let { fileName },
+                                        onBatch = { if (!busy) batch.visible = true },
                                         onInspect = { picker.launch(arrayOf("*/*")) },
                                         onBrowse = { page = Page.BROWSE },
                                         onResumeFile = { page = Page.CLEANER }
@@ -724,14 +686,14 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                                                 Triple(stream.toByteArray(), ext, "The image was converted and re-encoded, so all embedded metadata was dropped. Pixels may change slightly.")
                                                             } else {
                                                                 val r = MetadataEngine.clean(context, source, fileName, mime) ?: error("This format is not supported yet")
-                                                                val ext = fileName.substringAfterLast('.', "bin")
+                                                                val ext = fileName.substringAfterLast('.', BatchFormat.resolve(fileName, mime)?.extension ?: "bin")
                                                                 val summary = "Removed " + r.removed + " field(s); " + r.remaining + " known field(s) still present. " + r.note
                                                                 Triple(r.bytes, ext, summary)
                                                             }
                                                         }
                                                     }.onSuccess { (bytes, ext, note) ->
                                                         readyBytes = bytes
-                                                        outBase = fileName.substringBeforeLast('.', fileName) + "-clean"
+                                                        outBase = fileName.substringBeforeLast('.', fileName)
                                                         outExt = ext
                                                         lastAction = "Clean copy saved"
                                                         status = "Cleaned copy prepared. Original is untouched. " + note
@@ -775,7 +737,9 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                             ResultCard(
                                                 outBase = outBase, onOutBase = { outBase = it }, outExt = outExt,
                                                 canOverwrite = selectedUri != null && outExt.lowercase(Locale.ROOT).replace("jpeg", "jpg") == origExt,
-                                                busy = busy, onSaveNew = { saveAsNew() }, onOverwrite = { confirmOverwrite = true }
+                                                busy = busy, onSaveNew = { singleFolder.launch(null) },
+                                                onGallery = if (isImageExt(outExt) && Build.VERSION.SDK_INT >= 29) ({ saveSingleCopy(null) }) else null,
+                                                onOverwrite = { confirmOverwrite = true }
                                             )
                                         }
                                     )
@@ -876,11 +840,21 @@ private fun Header() {
 
 @Composable
 private fun HomePage(
-    currentName: String?, onInspect: () -> Unit, onBrowse: () -> Unit, onResumeFile: () -> Unit
+    currentName: String?, onBatch: () -> Unit, onInspect: () -> Unit, onBrowse: () -> Unit, onResumeFile: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         PageHeading("Inspect your files", "Choose a file to see its metadata and available cleaning options.")
         PrimaryButton("Inspect a file", Icons.Default.Search, onInspect)
+        VaultCard(onClick = onBatch) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Icon(Icons.Default.Collections, null, tint = AccentSoft)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Batch clean files", style = MaterialTheme.typography.titleMedium, color = TextMain)
+                    Text("Review names and save multiple files together.", style = MaterialTheme.typography.bodySmall, color = Muted)
+                }
+                Icon(Icons.Default.ChevronRight, null, tint = Muted)
+            }
+        }
         SecondaryButton("Browse by category", Icons.Default.FolderOpen, onBrowse)
         if (currentName != null) {
             VaultCard(onClick = onResumeFile) {
@@ -1178,7 +1152,7 @@ private fun CleanerPage(
 @Composable
 private fun ResultCard(
     outBase: String, onOutBase: (String) -> Unit, outExt: String, canOverwrite: Boolean,
-    busy: Boolean, onSaveNew: () -> Unit, onOverwrite: () -> Unit
+    busy: Boolean, onSaveNew: () -> Unit, onGallery: (() -> Unit)?, onOverwrite: () -> Unit
 ) {
     Column(
         Modifier.fillMaxWidth()
@@ -1195,11 +1169,13 @@ private fun ResultCard(
                 Text("Name it, then choose how to save.", color = Muted, style = MaterialTheme.typography.bodySmall)
             }
         }
-        OutlinedTextField(
-            value = outBase, onValueChange = onOutBase, label = { Text("File name") },
-            suffix = { Text("." + outExt) }, singleLine = true, modifier = Modifier.fillMaxWidth()
-        )
-        PrimaryButton(if (busy) "Working…" else "Save as new file", Icons.Default.Download, { if (!busy) onSaveNew() }, container = Clean, content = Color(0xFF04210F))
+        ExportNameField(outBase, onOutBase, outExt, "File name", enabled = !busy)
+        TextButton(onClick = { onOutBase(cleanStem(outBase)) }, enabled = !busy && validStem(outBase)) { Text("Add _clean") }
+        Button(onClick = onSaveNew, enabled = !busy && validStem(outBase), modifier = Modifier.fillMaxWidth()) {
+            Text(if (isImageExt(outExt)) "Save as new image in folder" else "Save as new file in folder")
+        }
+        if (onGallery != null) OutlinedButton(onClick = onGallery, enabled = !busy && validStem(outBase),
+            modifier = Modifier.fillMaxWidth()) { Text("Save to Pictures/MetaVault") }
         OutlinedButton(
             onClick = onOverwrite, enabled = canOverwrite && !busy,
             modifier = Modifier.fillMaxWidth().height(52.dp), shape = RoundedCornerShape(12.dp),
@@ -1211,7 +1187,7 @@ private fun ResultCard(
             Text("Overwrite original", fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
         Text(
-            if (canOverwrite) "Save as new keeps your original untouched (images go to Pictures/MetaVault). Overwrite replaces it after storing a backup you can restore from History."
+            if (canOverwrite) "Choose a folder to save a copy. For an existing name, choose Overwrite, Rename or Skip. Replacements are backed up in History."
             else "Overwrite is unavailable because the output format differs from the original.",
             color = Muted, style = MaterialTheme.typography.bodySmall
         )

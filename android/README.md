@@ -35,7 +35,11 @@ The Android APK Build GitHub workflow uploads `MetaVault-debug-apk` and runs uni
 
 ## Batch cleaner
 
-Under **Cleaner → Batch clean files**, select local files and choose a writable folder. MetaVault processes one file at a time, checks the supported metadata for that format, creates a new document and compares its saved bytes with the prepared copy. Verified exports appear in session History. The per-file results show skipped formats and failures. **Stop after this file** keeps completed copies and leaves the rest unprocessed.
+Open **Batch clean files** from Home or Cleaner. Review the output name for each selected file or use **Rename all · add _clean** once. File extensions stay intact. **Save as new files** uses a folder you choose. **Overwrite originals** lists the files for confirmation and backs up each original before writing. **Stop after this file** finishes the active export. **Review unfinished files** lets you retry supported files that were skipped, failed or still in the queue.
+
+The single-file result screen also offers a manual name, **Add _clean**, a folder destination, and a Pictures/MetaVault shortcut on Android 10+. Both folder flows offer **Overwrite**, **Rename** or **Skip** on a name collision. Select a new name for a folder, ambiguous destination or protected input. Android controls which files the gallery shortcut can access. Use the folder picker for files owned by another app.
+
+MetaVault reopens each saved file to verify its bytes. Replacements require a verified private backup in History. If a write fails after opening the target, MetaVault tries to restore and verify its previous contents.
 
 Batch supports JPEG, PNG, WebP, MP3 with recognizable Layer III frame headers, and DOCX/XLSX/PPTX. The single-file format limits above also apply. Unusual images that need EXIF-only fallback are refused in batch. The existing 64 MiB input limit applies per file. Selection and progress survive screen rotation within the running app. The queue is held in memory.
 
