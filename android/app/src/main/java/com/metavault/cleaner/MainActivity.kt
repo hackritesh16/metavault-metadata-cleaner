@@ -34,8 +34,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -65,6 +67,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -72,7 +76,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.LayoutDirection
+import kotlin.math.roundToInt
+import kotlin.math.abs
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -522,7 +529,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         }
     }
 
-    AuroraTheme {
+    AuroraTheme(photoBackground = customPhotoBitmap != null) {
         BatchCleanerDialog(batch)
         requestedCategory?.let { requested ->
             AlertDialog(
@@ -1223,22 +1230,37 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
     val tabs = remember { listOf(Page.HOME, Page.BROWSE, Page.CLEANER, Page.HISTORY, Page.SETTINGS) }
     val selectedIndex = tabs.indexOf(activeTab).coerceAtLeast(0)
     val motionEnabled = LocalMotionEnabled.current
-    val startEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex.toFloat()) }
-    val endEdge = remember { androidx.compose.animation.core.Animatable(selectedIndex + 1f) }
-    var previousIndex by remember { mutableIntStateOf(selectedIndex) }
-    LaunchedEffect(selectedIndex, motionEnabled) {
-        val movingRight = selectedIndex >= previousIndex
-        previousIndex = selectedIndex
+    val startEdge = remember { Animatable(selectedIndex.toFloat()) }
+    val endEdge = remember { Animatable(selectedIndex + 1f) }
+    // The pointer writes these values directly. Only the indicator's draw pass observes moves.
+    var finger by remember { mutableFloatStateOf(Float.NaN) }
+    var stretch by remember { mutableFloatStateOf(0f) }
+    var release by remember { mutableIntStateOf(0) }
+    var dragging by remember { mutableStateOf(false) }
+    val selectTab by rememberUpdatedState<(Page) -> Unit> { item ->
+        if (enabled) {
+            if (page != item) view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            onPageSelected(item)
+        }
+    }
+    LaunchedEffect(selectedIndex, motionEnabled, release) {
+        if (dragging) return@LaunchedEffect
+        if (!finger.isNaN()) {
+            val position = finger
+            startEdge.snapTo(position - stretch)
+            endEdge.snapTo(position + 1f + stretch)
+            if (!dragging) finger = Float.NaN
+        }
+        val target = selectedIndex.toFloat()
         if (!motionEnabled) {
-            startEdge.snapTo(selectedIndex.toFloat())
-            endEdge.snapTo(selectedIndex + 1f)
+            startEdge.snapTo(target)
+            endEdge.snapTo(target + 1f)
         } else {
-            val lead = androidx.compose.animation.core.spring<Float>(
-                dampingRatio = 0.6f, stiffness = androidx.compose.animation.core.Spring.StiffnessMedium)
-            val lag = androidx.compose.animation.core.spring<Float>(
-                dampingRatio = 0.75f, stiffness = androidx.compose.animation.core.Spring.StiffnessLow)
-            launch { startEdge.animateTo(selectedIndex.toFloat(), if (movingRight) lag else lead) }
-            launch { endEdge.animateTo(selectedIndex + 1f, if (movingRight) lead else lag) }
+            val right = target >= startEdge.value
+            val lead = spring<Float>(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium)
+            val lag = spring<Float>(dampingRatio = 0.82f, stiffness = 500f)
+            launch { startEdge.animateTo(target, if (right) lag else lead) }
+            launch { endEdge.animateTo(target + 1f, if (right) lead else lag) }
         }
     }
     Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.safeDrawing.only(
@@ -1247,33 +1269,66 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
             .padding(horizontal = AuroraLayout.padding, vertical = AuroraLayout.small)
             .auroraGlass(shape).padding(AuroraLayout.small)) {
             val tabWidth = (maxWidth / tabs.size).coerceAtLeast(AuroraLayout.touchTarget)
-            val overflow = if (maxWidth < AuroraLayout.touchTarget * tabs.size)
+            val tooNarrow = maxWidth < AuroraLayout.touchTarget * tabs.size
+            val overflow = if (tooNarrow)
                 Modifier.horizontalScroll(rememberScrollState()) else Modifier
             Box(overflow) {
-                Box(Modifier.width(tabWidth * tabs.size)) {
-                    Canvas(Modifier.matchParentSize()) {
+                // On a very narrow window dragging scrolls the tab strip to reveal hidden tabs.
+                val rtl = androidx.compose.ui.platform.LocalLayoutDirection.current == LayoutDirection.Rtl
+                val swipe = if (!enabled || tooNarrow) Modifier else Modifier.pointerInput(page, motionEnabled, rtl) {
+                    fun position(x: Float): Float {
+                        val logicalX = if (rtl) size.width - x else x
+                        return (logicalX / size.width * tabs.size - 0.5f).coerceIn(0f, tabs.lastIndex.toFloat())
+                    }
+                    try {
+                        detectHorizontalDragGestures(
+                            onDragStart = { down ->
+                                dragging = true
+                                finger = position(down.x)
+                                stretch = 0f
+                            },
+                            onDragEnd = {
+                                dragging = false
+                                val target = finger.roundToInt()
+                                release++
+                                if (target != selectedIndex) selectTab(tabs[target])
+                            },
+                            onDragCancel = { dragging = false; release++ }
+                        ) { change, delta ->
+                            change.consume()
+                            finger = position(change.position.x)
+                            stretch = if (motionEnabled) (abs(delta) * tabs.size / size.width * 0.28f).coerceAtMost(0.12f) else 0f
+                        }
+                    } finally {
+                        if (dragging) {
+                            dragging = false
+                            release++
+                        }
+                    }
+                }
+                Box(Modifier.width(tabWidth * tabs.size).then(swipe)) {
+                    val cellPx = with(androidx.compose.ui.platform.LocalDensity.current) { tabWidth.toPx() }
+                    val pillFill = remember(cellPx) { Brush.horizontalGradient(listOf(
+                        AccentSoft.copy(alpha = 0.42f), Color.White.copy(alpha = 0.26f), AccentSoft.copy(alpha = 0.34f)
+                    ), endX = cellPx) }
+                    Canvas(Modifier.matchParentSize().graphicsLayer()) {
                         val cell = size.width / tabs.size
                         val inset = 2.dp.toPx()
-                        val stretch = ((endEdge.value - startEdge.value) - 1f).coerceIn(0f, 1f)
-                        val pillHeight = (size.height - 4.dp.toPx()) * (1f - 0.13f * stretch)
-                        val left = startEdge.value * cell + inset
-                        val right = endEdge.value * cell - inset
+                        val start = if (finger.isNaN()) startEdge.value else finger - stretch
+                        val end = if (finger.isNaN()) endEdge.value else finger + 1f + stretch
+                        val elongation = (end - start - 1f).coerceIn(0f, 1f)
+                        val pillHeight = (size.height - 4.dp.toPx()) * (1f - 0.13f * elongation)
+                        val left = (if (rtl) tabs.size - end else start).coerceAtLeast(0f) * cell + inset
+                        val right = (if (rtl) tabs.size - start else end).coerceAtMost(tabs.size.toFloat()) * cell - inset
                         if (right > left) {
                             val top = (size.height - pillHeight) / 2f
                             val pillSize = androidx.compose.ui.geometry.Size(right - left, pillHeight)
                             val pillCorner = CornerRadius(pillHeight / 2f, pillHeight / 2f)
                             // Strong enough to remain visible over the Aurora backdrop; the two
                             // independently animated edges create the liquid stretch and recoil.
-                            drawRoundRect(
-                                brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                    listOf(AccentSoft.copy(alpha = 0.42f),
-                                        Color.White.copy(alpha = 0.26f),
-                                        AccentSoft.copy(alpha = 0.34f)),
-                                    startX = left, endX = right
-                                ),
-                                topLeft = Offset(left, top), size = pillSize,
-                                cornerRadius = pillCorner
-                            )
+                            translate(left, top) {
+                                drawRoundRect(brush = pillFill, size = pillSize, cornerRadius = pillCorner)
+                            }
                             drawRoundRect(
                                 color = Color.White.copy(alpha = 0.52f),
                                 topLeft = Offset(left, top), size = pillSize,
@@ -1301,8 +1356,7 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                             val selected = activeTab == item
                             Column(Modifier.weight(1f).heightIn(min = AuroraLayout.touchTarget).clip(AuroraLayout.buttonShape)
                                 .selectable(selected, enabled = enabled, role = androidx.compose.ui.semantics.Role.Tab) {
-                                    if (page != item) view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                                    onPageSelected(item)
+                                    selectTab(item)
                                 },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center) {

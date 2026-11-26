@@ -6,6 +6,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
@@ -81,6 +83,19 @@ private val AuroraTypography = Typography(
     labelSmall = body(12, 16, FontWeight.Medium)
 )
 
+// Keep light labels legible over bright photos without changing any wallpaper pixels around them.
+private val photoTextShadow = Shadow(Color.Black, Offset(0f, 1f), 3f)
+private val photoTypography = with(AuroraTypography) {
+    fun TextStyle.onPhoto() = copy(shadow = photoTextShadow)
+    copy(
+        displayLarge = displayLarge.onPhoto(), displayMedium = displayMedium.onPhoto(), displaySmall = displaySmall.onPhoto(),
+        headlineLarge = headlineLarge.onPhoto(), headlineMedium = headlineMedium.onPhoto(), headlineSmall = headlineSmall.onPhoto(),
+        titleLarge = titleLarge.onPhoto(), titleMedium = titleMedium.onPhoto(), titleSmall = titleSmall.onPhoto(),
+        bodyLarge = bodyLarge.onPhoto(), bodyMedium = bodyMedium.onPhoto(), bodySmall = bodySmall.onPhoto(),
+        labelLarge = labelLarge.onPhoto(), labelMedium = labelMedium.onPhoto(), labelSmall = labelSmall.onPhoto()
+    )
+}
+
 private val AuroraScheme = darkColorScheme(
     primary = Accent, onPrimary = Bg, primaryContainer = AccentTint, onPrimaryContainer = TextMain,
     secondary = AccentSoft, onSecondary = Bg, secondaryContainer = Color(0xFF183448), onSecondaryContainer = TextMain,
@@ -95,8 +110,8 @@ private val AuroraScheme = darkColorScheme(
 )
 
 @Composable
-internal fun AuroraTheme(content: @Composable () -> Unit) {
+internal fun AuroraTheme(photoBackground: Boolean, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled()) {
-        MaterialTheme(colorScheme = AuroraScheme, typography = AuroraTypography, content = content)
+        MaterialTheme(colorScheme = AuroraScheme, typography = if (photoBackground) photoTypography else AuroraTypography, content = content)
     }
 }

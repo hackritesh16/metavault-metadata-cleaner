@@ -34,7 +34,7 @@ def locate(label, tap=False):
             if tap:
                 x1, y1, x2, y2 = bounds(node)
                 shell("input", "tap", str((x1 + x2) // 2), str((y1 + y2) // 2))
-            return
+            return bounds(node)
         time.sleep(.3)
     raise AssertionError(f"Could not find {label!r}")
 
@@ -78,10 +78,16 @@ def main():
     shell("wm", "density", "200")
     adb("install", "-r", sys.argv[1])
     exercise("1.0", "1.0")
+    from wallpaper_swipe import check_wallpaper_and_swipes
+    check_wallpaper_and_swipes()
     # Exercise a different palette in the second pass, too.
     shell("pm", "clear", PACKAGE)
     exercise("0.0", "1.3")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as error:
+        print(f"::error::{error}", flush=True)
+        raise
