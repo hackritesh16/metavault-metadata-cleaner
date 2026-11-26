@@ -33,14 +33,14 @@ import kotlinx.coroutines.withContext
 import java.nio.channels.FileChannel
 
 @Composable
-internal fun AdvancedMetadataEntry(uri: Uri, enabled: Boolean) = key(uri) {
+internal fun AdvancedMetadataEntry(uri: Uri, enabled: Boolean, background: @Composable () -> Unit) = key(uri) {
     var open by rememberSaveable { mutableStateOf(false) }
     AuroraOutlinedButton(onClick = { open = true }, enabled = enabled) { Text("View More Data") }
-    if (open) AdvancedMetadataViewer(uri) { open = false }
+    if (open) AdvancedMetadataViewer(uri, background) { open = false }
 }
 
 @Composable
-private fun AdvancedMetadataViewer(uri: Uri, close: () -> Unit) {
+private fun AdvancedMetadataViewer(uri: Uri, background: @Composable () -> Unit, close: () -> Unit) {
     val context = LocalContext.current
     var loaded by remember { mutableStateOf<Pair<FileChannel, BlockIndex>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -72,6 +72,7 @@ private fun AdvancedMetadataViewer(uri: Uri, close: () -> Unit) {
     fun back() { if (selected != null) selected = null else close() }
     Dialog(onDismissRequest = ::back, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.widthIn(max = AuroraLayout.contentMaxWidth).fillMaxSize(), color = Bg) {
+            background()
             Column(Modifier.safeDrawingPadding().padding(AuroraLayout.padding),
                 verticalArrangement = Arrangement.spacedBy(AuroraLayout.gap)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

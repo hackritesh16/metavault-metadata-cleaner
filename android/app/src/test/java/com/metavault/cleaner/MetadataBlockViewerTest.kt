@@ -109,6 +109,18 @@ class MetadataBlockViewerTest {
         assertEquals("A.\n.~", bytes(65, 255, 0, 126).blockDump(true, 2))
     }
 
+    @Test fun exposesAppendedBytesAfterEachContainersLogicalEnd() {
+        val tail = bytes(222, 173, 0, 255)
+        for (container in listOf(bytes(255, 216, 255, 217), png + pngChunk("IEND", byteArrayOf()), webp(byteArrayOf()))) {
+            inspect(container + tail) { file, index ->
+                assertNull(index.warning)
+                val block = index.blocks.single()
+                assertEquals("Trailing data", block.name)
+                assertArrayEquals(tail, file.readRange(block.offset, block.size.toInt()))
+            }
+        }
+    }
+
     @Test fun damagedLengthsKeepEarlierCompleteRecords() {
         val good = marker(224, data("JFIF\u0000") + ByteArray(9))
         for (bad in listOf(bytes(255, 225, 0, 1), bytes(255, 225, 255, 255), bytes(255))) {

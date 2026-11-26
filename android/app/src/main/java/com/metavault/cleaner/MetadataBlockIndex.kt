@@ -74,6 +74,10 @@ internal class MetadataBlockIndex(private val file: FileChannel, private val che
         blocks += MetadataBlock(name, type, offset, size)
     }
 
+    private fun trailing(start: Long, type: String) {
+        if (start < end) add("Trailing data", type, start, end - start)
+    }
+
     private fun jpeg() {
         var pos = 2L
         var entropy = false
@@ -84,7 +88,10 @@ internal class MetadataBlockIndex(private val file: FileChannel, private val che
             while (byte(pos) == 255) pos++
             val marker = byte(pos++)
             if (entropy && (marker == 0 || marker in 0xd0..0xd7)) continue
-            if (marker == 0xd9) return
+            if (marker == 0xd9) {
+                trailing(pos, "After JPEG EOI")
+                return
+            }
             if (marker == 1 || marker in 0xd0..0xd7) continue
             require(marker != 0 && marker != 0xd8) { "Unexpected JPEG marker at byte ${pos - 1}." }
             val length = (byte(pos) shl 8) + byte(pos + 1)
@@ -107,7 +114,7 @@ internal class MetadataBlockIndex(private val file: FileChannel, private val che
                 }
                 add(name, type, start, size)
             } else if (marker == 0xfe) add("Comment", "COM", start, size)
-            else if (marker in 0xf0..0xfd || marker == 0xc8) add("Unknown Block", "JPEG 0x${marker.toString(16)}", start, size)
+            else if (marker in 0x02..0xbf || marker in 0xf0..0xfd || marker == 0xc8) add("Unknown Block", "JPEG 0x${marker.toString(16)}", start, size)
             pos += length
             entropy = marker == 0xda || (entropy && marker == 0xdc)
         }
@@ -124,7 +131,11 @@ internal class MetadataBlockIndex(private val file: FileChannel, private val che
             require(size <= end - pos - 12) { "Truncated PNG $type chunk." }
             val start = pos + 8
             when (type) {
-                "IEND" -> { require(size == 0L) { "Invalid PNG IEND length." }; return }
+                "IEND" -> {
+                    require(size == 0L) { "Invalid PNG IEND length." }
+                    trailing(start + 4, "After PNG IEND")
+                    return
+                }
                 "IHDR", "PLTE", "IDAT", "acTL", "fcTL", "fdAT" -> Unit
                 "tEXt", "zTXt", "iTXt" -> add(
                     if (matches(start, "XML:com.adobe.xmp\u0000", size)) "XMP" else "PNG text", type, start, size)
@@ -161,6 +172,7 @@ internal class MetadataBlockIndex(private val file: FileChannel, private val che
             }
             pos = start + padded
         }
+        trailing(limit, "After WebP RIFF")
     }
 }
 

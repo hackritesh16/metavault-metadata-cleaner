@@ -659,6 +659,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                             MetadataSection(
                                                 uri = selectedUri, fields = fields, inspecting = inspecting, inspectError = inspectError,
                                                 kind = kind, mime = mime,
+                                                viewerBackground = { AuroraBackground(selectedTheme, { 0f }, customPhotoBitmap, previewThemes) },
                                                 locationMayBeHidden = !hasLocationAccess,
                                                 edits = editValues, busy = busy,
                                                 onLocationAccess = { locationPermissionLauncher.launch(Manifest.permission.ACCESS_MEDIA_LOCATION) },
@@ -953,7 +954,7 @@ private fun LibraryPage(
 @Composable
 private fun MetadataSection(
     uri: Uri?, fields: List<MetaField>?, inspecting: Boolean, inspectError: String?,
-    kind: MetadataEngine.Kind, mime: String, locationMayBeHidden: Boolean,
+    kind: MetadataEngine.Kind, mime: String, locationMayBeHidden: Boolean, viewerBackground: @Composable () -> Unit,
     edits: MutableMap<String, String>, busy: Boolean, onLocationAccess: () -> Unit, onSaveEdits: () -> Unit
 ) {
     if (uri == null) return
@@ -980,7 +981,7 @@ private fun MetadataSection(
             Text("Android may hide GPS location here. Optional location-metadata access reads location already stored in this photo; it does not track your device.", color = Warn, style = MaterialTheme.typography.bodySmall)
             AuroraTextButton(onClick = onLocationAccess, enabled = !busy && !inspecting) { Text("Allow location metadata") }
         }
-        if (kind == MetadataEngine.Kind.IMAGE) AdvancedMetadataEntry(uri, enabled = !busy)
+        if (kind == MetadataEngine.Kind.IMAGE) AdvancedMetadataEntry(uri, enabled = !busy, background = viewerBackground)
     }
     if (kind == MetadataEngine.Kind.IMAGE && fields != null && inspectError == null) {
         AuroraGlassCard {
