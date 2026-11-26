@@ -6,7 +6,11 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -15,18 +19,72 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-internal val Bg = Color(0xFF080D1B)
-internal val Surface1 = Color(0xFF111B2E)
-internal val Surface2 = Color(0xFF18243A)
-internal val Accent = Color(0xFF8868FF)
-internal val AccentSoft = Color(0xFF55D6FF)
+/** One complete colour set. Every theme option is one of these, so picking a theme recolours the whole app. */
+internal class ThemePalette(
+    val bg: Color, val surface1: Color, val surface2: Color, val surface3: Color, val surface4: Color, val bright: Color,
+    val accent: Color, val accentSoft: Color, val accentTint: Color, val line: Color, val lineStrong: Color,
+    val glowUpper: Color, val glowLower: Color
+)
+
+private fun derived(bg: Long, accent: Long, soft: Long): ThemePalette {
+    val b = Color(bg); val a = Color(accent); val s = Color(soft)
+    fun tone(t: Float) = lerp(b, a, t)
+    return ThemePalette(
+        bg = b, surface1 = tone(0.09f), surface2 = tone(0.14f), surface3 = tone(0.19f), surface4 = tone(0.25f), bright = tone(0.31f),
+        accent = a, accentSoft = s, accentTint = tone(0.38f),
+        line = lerp(tone(0.2f), Color(0xFFA7B4CC), 0.22f), lineStrong = lerp(tone(0.3f), Color(0xFFA7B4CC), 0.5f),
+        glowUpper = a, glowLower = s
+    )
+}
+
+private val AuroraPalette0 = ThemePalette(
+    bg = Color(0xFF080D1B), surface1 = Color(0xFF111B2E), surface2 = Color(0xFF18243A), surface3 = Color(0xFF1D293E),
+    surface4 = Color(0xFF243149), bright = Color(0xFF29354B), accent = Color(0xFF8868FF), accentSoft = Color(0xFF55D6FF),
+    accentTint = Color(0xFF332959), line = Color(0xFF39455C), lineStrong = Color(0xFF738198),
+    glowUpper = Color(0xFF8868FF), glowLower = Color(0xFF55D6FF)
+)
+
+private val themePalettes = linkedMapOf(
+    "Aurora" to AuroraPalette0,
+    "Ocean" to derived(0xFF06141C, 0xFF1EA7DA, 0xFF2EE0D0),
+    "Violet" to derived(0xFF110A1E, 0xFF9B6BFF, 0xFFD17BF0),
+    "Emerald" to derived(0xFF07150F, 0xFF2FBF8F, 0xFF7EE08F),
+    "Sunset" to derived(0xFF1B0F0A, 0xFFF07A4A, 0xFFF5B35A),
+    "Rose" to derived(0xFF1B0B14, 0xFFE0689B, 0xFFF5A3C0),
+    "Midnight" to derived(0xFF070A14, 0xFF5B7FE0, 0xFF8DA6E8),
+    "Monochrome" to derived(0xFF0C0C0C, 0xFFB8B8B8, 0xFFE2E2E2)
+)
+
+internal val AuroraThemeNames: List<String> = themePalettes.keys.toList()
+
+internal fun paletteFor(name: String): ThemePalette = themePalettes[name] ?: AuroraPalette0
+
+/** The theme in use. It is Compose state, so everything that reads a colour below redraws when it changes. */
+internal object ActiveTheme {
+    var palette by mutableStateOf(AuroraPalette0)
+        private set
+    var name by mutableStateOf("Aurora")
+        private set
+
+    fun select(theme: String) {
+        val resolved = if (theme in themePalettes) theme else "Aurora"
+        name = resolved
+        palette = paletteFor(resolved)
+    }
+}
+
+internal val Bg: Color get() = ActiveTheme.palette.bg
+internal val Surface1: Color get() = ActiveTheme.palette.surface1
+internal val Surface2: Color get() = ActiveTheme.palette.surface2
+internal val Accent: Color get() = ActiveTheme.palette.accent
+internal val AccentSoft: Color get() = ActiveTheme.palette.accentSoft
+internal val AccentTint: Color get() = ActiveTheme.palette.accentTint
+internal val Line: Color get() = ActiveTheme.palette.line
+internal val LineStrong: Color get() = ActiveTheme.palette.lineStrong
 internal val Clean = Color(0xFF43D9B0)
 internal val TextMain = Color(0xFFF4F7FF)
 internal val Muted = Color(0xFFA7B4CC)
 internal val Warn = Color(0xFFFFC379)
-internal val Line = Color(0xFF39455C)
-internal val LineStrong = Color(0xFF738198)
-internal val AccentTint = Color(0xFF332959)
 
 internal object AuroraLayout {
     val small = 4.dp
@@ -79,17 +137,17 @@ private val AuroraTypography = Typography(
     labelSmall = body(12, 16, FontWeight.Medium)
 )
 
-private val AuroraScheme = darkColorScheme(
-    primary = Accent, onPrimary = Bg, primaryContainer = AccentTint, onPrimaryContainer = TextMain,
-    secondary = AccentSoft, onSecondary = Bg, secondaryContainer = Color(0xFF183448), onSecondaryContainer = TextMain,
-    tertiary = Clean, onTertiary = Bg, tertiaryContainer = Color(0xFF10392F), onTertiaryContainer = TextMain,
-    error = Color(0xFFFFB4AE), onError = Bg, errorContainer = Color(0xFF552526), onErrorContainer = TextMain,
-    background = Bg, onBackground = TextMain, surface = Surface1, onSurface = TextMain,
-    surfaceVariant = Surface2, onSurfaceVariant = Muted, outline = LineStrong, outlineVariant = Line,
-    surfaceDim = Bg, surfaceBright = Color(0xFF29354B), surfaceContainerLowest = Bg,
-    surfaceContainerLow = Surface1, surfaceContainer = Surface2, surfaceContainerHigh = Color(0xFF1D293E),
-    surfaceContainerHighest = Color(0xFF243149), surfaceTint = Color.Transparent,
-    inverseSurface = TextMain, inverseOnSurface = Bg, inversePrimary = Color(0xFF5139A7)
+private fun schemeFor(p: ThemePalette) = darkColorScheme(
+    primary = p.accent, onPrimary = p.bg, primaryContainer = p.accentTint, onPrimaryContainer = TextMain,
+    secondary = p.accentSoft, onSecondary = p.bg, secondaryContainer = lerp(p.bg, p.accentSoft, 0.22f), onSecondaryContainer = TextMain,
+    tertiary = Clean, onTertiary = p.bg, tertiaryContainer = Color(0xFF10392F), onTertiaryContainer = TextMain,
+    error = Color(0xFFFFB4AE), onError = p.bg, errorContainer = Color(0xFF552526), onErrorContainer = TextMain,
+    background = p.bg, onBackground = TextMain, surface = p.surface1, onSurface = TextMain,
+    surfaceVariant = p.surface2, onSurfaceVariant = Muted, outline = p.lineStrong, outlineVariant = p.line,
+    surfaceDim = p.bg, surfaceBright = p.bright, surfaceContainerLowest = p.bg,
+    surfaceContainerLow = p.surface1, surfaceContainer = p.surface2, surfaceContainerHigh = p.surface3,
+    surfaceContainerHighest = p.surface4, surfaceTint = Color.Transparent,
+    inverseSurface = TextMain, inverseOnSurface = p.bg, inversePrimary = lerp(p.bg, p.accent, 0.6f)
 )
 
 // photoBackground is kept so existing call sites do not change; text no longer needs a shadow over photos.
@@ -97,6 +155,6 @@ private val AuroraScheme = darkColorScheme(
 @Composable
 internal fun AuroraTheme(photoBackground: Boolean, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled()) {
-        MaterialTheme(colorScheme = AuroraScheme, typography = AuroraTypography, content = content)
+        MaterialTheme(colorScheme = schemeFor(ActiveTheme.palette), typography = AuroraTypography, content = content)
     }
 }

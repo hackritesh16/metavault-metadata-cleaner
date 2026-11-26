@@ -262,7 +262,11 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var page by remember { mutableStateOf(Page.HOME) }
-    var selectedTheme by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora") }
+    // Selecting a theme recolours the whole app (surfaces, accents, glass), not only the background glow.
+    remember {
+        ActiveTheme.select(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora")
+    }
+    val selectedTheme = ActiveTheme.name
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
     var previewThemes by remember { mutableStateOf(true) }
     val mainScrollState = rememberScrollState()
@@ -708,7 +712,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                     Page.SETTINGS -> SettingsPage(
                                         allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
                                         previewThemes = previewThemes, onPreviewThemes = { previewThemes = it },
-                                        onThemeSelected = { selectedTheme = it; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
+                                        onThemeSelected = { ActiveTheme.select(it); context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().putString("theme", it).apply() },
                                         onCustomPhoto = { backgroundPicker.launch(arrayOf("image/*")) },
                                         onClearPhoto = { customPhotoUri = null; context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).edit().remove("background_photo").apply() },
                                         onAbout = { page = Page.ABOUT }, onPermissions = openAllFilesAccess
@@ -1158,7 +1162,7 @@ private fun SettingsPage(
         PageHeading("Settings", "Personalise your MetaVault experience.")
         AuroraGlassCard {
             Text("Appearance & themes", color = TextMain, style = MaterialTheme.typography.titleMedium)
-            Text("The glass stays neutral; themes only change the background.", color = Muted, style = MaterialTheme.typography.bodySmall)
+            Text("Each theme recolours the whole app: background, surfaces, buttons and highlights.", color = Muted, style = MaterialTheme.typography.bodySmall)
             SettingRow("Preview theme backgrounds", "Show the chosen theme behind the glass", previewThemes, onPreviewThemes)
             val themes = AuroraThemeNames
             themes.chunked(2).forEach { pair ->

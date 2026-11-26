@@ -26,27 +26,17 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 
 private data class GlowPair(val upper: Color, val lower: Color)
-private val palettes = linkedMapOf(
-    "Aurora" to GlowPair(Accent, AccentSoft),
-    "Ocean" to GlowPair(Color(0xFF087EAA), Color(0xFF16C5C0)),
-    "Violet" to GlowPair(Color(0xFF7042C8), Color(0xFFB45BDB)),
-    "Emerald" to GlowPair(Color(0xFF087B63), Color(0xFF52C878)),
-    "Sunset" to GlowPair(Color(0xFFE06A42), Color(0xFFE5A044)),
-    "Rose" to GlowPair(Color(0xFFC34F83), Color(0xFFEA8DAD)),
-    "Midnight" to GlowPair(Color(0xFF34518D), Color(0xFF526A9D)),
-    "Monochrome" to GlowPair(Color(0xFF686868), Color(0xFFA0A0A0))
-)
-internal val AuroraThemeNames = palettes.keys.toList()
 
 @Composable
 internal fun AuroraBackground(theme: String, scrollOffset: () -> Float, photo: Bitmap?, showTheme: Boolean) {
-    Box(Modifier.fillMaxSize().background(Bg)) {
+    Box(Modifier.fillMaxSize().background(paletteFor(theme).bg)) {
         if (photo != null) {
             Image(remember(photo) { photo.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
             // Neutral scrim (the pre-Aurora 0.48 look): wallpaper stays clearly visible, glass text stays readable.
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
         } else if (showTheme) {
-            val colors = palettes[theme] ?: palettes.getValue("Aurora")
+            val palette = paletteFor(theme)
+            val colors = GlowPair(palette.glowUpper, palette.glowLower)
             val motion = LocalMotionEnabled.current
             if (motion) {
                 var drift by remember { mutableFloatStateOf(0f) }
