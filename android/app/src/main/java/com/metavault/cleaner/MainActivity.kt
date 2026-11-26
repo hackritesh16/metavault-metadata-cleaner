@@ -980,6 +980,7 @@ private fun MetadataSection(
             Text("Android may hide GPS location here. Optional location-metadata access reads location already stored in this photo; it does not track your device.", color = Warn, style = MaterialTheme.typography.bodySmall)
             AuroraTextButton(onClick = onLocationAccess, enabled = !busy && !inspecting) { Text("Allow location metadata") }
         }
+        if (kind == MetadataEngine.Kind.IMAGE) AdvancedMetadataEntry(uri, enabled = !busy)
     }
     if (kind == MetadataEngine.Kind.IMAGE && fields != null && inspectError == null) {
         AuroraGlassCard {
