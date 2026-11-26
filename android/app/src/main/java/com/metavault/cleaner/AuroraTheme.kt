@@ -6,14 +6,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -50,21 +46,21 @@ internal object AuroraLayout {
     val pill = RoundedCornerShape(50)
 }
 
-@OptIn(ExperimentalTextApi::class)
-private fun weightedFont(resource: Int, weight: FontWeight) = Font(
-    resId = resource, weight = weight,
-    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight))
+// Build #116 typography: Bricolage Grotesque headings, Instrument Sans body, JetBrains Mono technical text.
+// Static font files are fetched at build time (see prepareAuroraFonts in build.gradle.kts); no text shadows.
+internal val DisplayFont = FontFamily(
+    Font(R.font.bricolage_grotesque_semibold, FontWeight.SemiBold),
+    Font(R.font.bricolage_grotesque_bold, FontWeight.Bold)
 )
-
-internal val DisplayFont = FontFamily(weightedFont(R.font.inter_variable, FontWeight.Bold))
 private val BodyFont = FontFamily(
-    weightedFont(R.font.nunito_variable, FontWeight.Normal), weightedFont(R.font.nunito_variable, FontWeight.Medium),
-    weightedFont(R.font.nunito_variable, FontWeight.SemiBold)
+    Font(R.font.instrument_sans_regular, FontWeight.Normal),
+    Font(R.font.instrument_sans_medium, FontWeight.Medium),
+    Font(R.font.instrument_sans_semibold, FontWeight.SemiBold)
 )
 internal val MonoFont = FontFamily(Font(R.font.jetbrains_mono_medium, FontWeight.Medium))
 
-private fun heading(size: Int, line: Int) = TextStyle(
-    fontFamily = DisplayFont, fontWeight = FontWeight.Bold, fontSize = size.sp, lineHeight = line.sp
+private fun heading(size: Int, line: Int, weight: FontWeight = FontWeight.Bold, tracking: Float = 0f) = TextStyle(
+    fontFamily = DisplayFont, fontWeight = weight, fontSize = size.sp, lineHeight = line.sp, letterSpacing = tracking.sp
 )
 
 private fun body(size: Int, line: Int, weight: FontWeight = FontWeight.Normal) = TextStyle(
@@ -76,25 +72,12 @@ internal val TechnicalLabel = TextStyle(fontFamily = MonoFont, fontWeight = Font
 
 private val AuroraTypography = Typography(
     displayLarge = heading(57, 64), displayMedium = heading(45, 52), displaySmall = heading(36, 44),
-    headlineLarge = heading(36, 42), headlineMedium = heading(28, 34), headlineSmall = heading(24, 30),
-    titleLarge = heading(20, 26), titleMedium = heading(17, 23), titleSmall = heading(15, 21),
-    bodyLarge = body(16, 24), bodyMedium = body(14, 21), bodySmall = body(13, 19),
-    labelLarge = body(14, 20, FontWeight.SemiBold), labelMedium = body(13, 18, FontWeight.Medium),
+    headlineLarge = heading(36, 39, tracking = -0.9f), headlineMedium = heading(28, 32, tracking = -0.6f), headlineSmall = heading(24, 30),
+    titleLarge = heading(20, 26, FontWeight.SemiBold, -0.3f), titleMedium = heading(17, 22, FontWeight.SemiBold, -0.2f), titleSmall = heading(15, 21, FontWeight.SemiBold),
+    bodyLarge = body(16, 24), bodyMedium = body(14, 21), bodySmall = body(13, 18),
+    labelLarge = body(14, 20, FontWeight.Medium), labelMedium = body(12, 16, FontWeight.Medium),
     labelSmall = body(12, 16, FontWeight.Medium)
 )
-
-// Keep light labels legible over bright photos without changing any wallpaper pixels around them.
-private val photoTextShadow = Shadow(Color.Black, Offset(0f, 1f), 3f)
-private val photoTypography = with(AuroraTypography) {
-    fun TextStyle.onPhoto() = copy(shadow = photoTextShadow)
-    copy(
-        displayLarge = displayLarge.onPhoto(), displayMedium = displayMedium.onPhoto(), displaySmall = displaySmall.onPhoto(),
-        headlineLarge = headlineLarge.onPhoto(), headlineMedium = headlineMedium.onPhoto(), headlineSmall = headlineSmall.onPhoto(),
-        titleLarge = titleLarge.onPhoto(), titleMedium = titleMedium.onPhoto(), titleSmall = titleSmall.onPhoto(),
-        bodyLarge = bodyLarge.onPhoto(), bodyMedium = bodyMedium.onPhoto(), bodySmall = bodySmall.onPhoto(),
-        labelLarge = labelLarge.onPhoto(), labelMedium = labelMedium.onPhoto(), labelSmall = labelSmall.onPhoto()
-    )
-}
 
 private val AuroraScheme = darkColorScheme(
     primary = Accent, onPrimary = Bg, primaryContainer = AccentTint, onPrimaryContainer = TextMain,
@@ -109,9 +92,11 @@ private val AuroraScheme = darkColorScheme(
     inverseSurface = TextMain, inverseOnSurface = Bg, inversePrimary = Color(0xFF5139A7)
 )
 
+// photoBackground is kept so existing call sites do not change; text no longer needs a shadow over photos.
+@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun AuroraTheme(photoBackground: Boolean, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled()) {
-        MaterialTheme(colorScheme = AuroraScheme, typography = if (photoBackground) photoTypography else AuroraTypography, content = content)
+        MaterialTheme(colorScheme = AuroraScheme, typography = AuroraTypography, content = content)
     }
 }

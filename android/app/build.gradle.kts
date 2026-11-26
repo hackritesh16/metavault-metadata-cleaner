@@ -48,10 +48,10 @@ dependencies {
 }
 
 /**
- * Download the OFL-licensed Inter and Nunito variable fonts for the Android APK.
- * Cached under build/generated so no font network request is made at runtime.
- * Builds need network only on a clean checkout; source files are verified to be
- * nonempty TrueType/OpenType fonts before being used as Android resources.
+ * Download the OFL-licensed Bricolage Grotesque and Instrument Sans fonts used by the app (the same
+ * static files as build #116, pinned to that commit). Cached under build/generated so no font
+ * network request is made at runtime. Builds need network only on a clean checkout; downloads are
+ * checked to be nonempty before being used as Android resources.
  */
 val generatedFonts = layout.buildDirectory.dir("generated/aurora-fonts")
 val prepareAuroraFonts = tasks.register("prepareAuroraFonts") {
@@ -59,10 +59,12 @@ val prepareAuroraFonts = tasks.register("prepareAuroraFonts") {
     doLast {
         val directory = generatedFonts.get().asFile.resolve("font")
         directory.mkdirs()
-        val fonts = mapOf(
-            "inter_variable.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz,wght%5D.ttf",
-            "nunito_variable.ttf" to "https://raw.githubusercontent.com/google/fonts/main/ofl/nunito/Nunito%5Bwght%5D.ttf"
-        )
+        val base = "https://raw.githubusercontent.com/hackritesh16/metavault-metadata-cleaner/" +
+            "af135039a0ed443363a0a35f671a5d03337eb5ca/android/app/src/main/res/font/"
+        val fonts = listOf(
+            "bricolage_grotesque_semibold", "bricolage_grotesque_bold",
+            "instrument_sans_regular", "instrument_sans_medium", "instrument_sans_semibold"
+        ).associate { "$it.ttf" to "$base$it.ttf" }
         fonts.forEach { (name, url) ->
             val output = directory.resolve(name)
             if (!output.exists() || output.length() < 10000L) {
