@@ -14,7 +14,7 @@ COLORS = [(245, 192, 65), (76, 180, 215), (124, 61, 94)]
 
 
 def apply_photo():
-    name = "metavault-wallpaper.png"
+    name = "swatch.png"
 
     def chunk(kind, data):
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
@@ -37,7 +37,11 @@ def apply_photo():
             if attempt == 4:
                 raise
             shell("input", "swipe", "240", "670", "240", "370", "420")
-    locate(name, tap=True)
+    # Recents may omit a newly pushed image. Select the explicit Downloads root.
+    from block_viewer_smoke import select
+    select("Show roots", tap=True)
+    select("Downloads", tap=True)
+    select(name, "swatch", tap=True)
     locate("Home", tap=True)
 
 
