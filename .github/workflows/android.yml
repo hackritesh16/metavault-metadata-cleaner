@@ -18,6 +18,11 @@ on:
         type: boolean
         default: false
 
+      viewer_smoke:
+        description: Test advanced block viewing and export on Android
+        type: boolean
+        default: false
+
 permissions:
   contents: read
 
@@ -57,8 +62,8 @@ jobs:
         run: gradle -p android testDebugUnitTest
 
   motion-smoke:
-    name: Motion smoke test (API 29, two cores)
-    if: github.event_name == 'workflow_dispatch' && inputs.motion_smoke
+    name: Android emulator smoke test (API 29, two cores)
+    if: github.event_name == 'workflow_dispatch' && (inputs.motion_smoke || inputs.viewer_smoke)
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -81,7 +86,9 @@ jobs:
           cores: 2
           ram-size: 1536M
           disable-animations: false
-          script: python3 android/qa/motion_smoke.py apk/app-debug.apk
+          script: |
+            if [ "${{ inputs.motion_smoke }}" = "true" ]; then python3 android/qa/motion_smoke.py apk/app-debug.apk; fi
+            if [ "${{ inputs.viewer_smoke }}" = "true" ]; then python3 android/qa/block_viewer_smoke.py apk/app-debug.apk; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

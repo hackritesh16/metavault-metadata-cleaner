@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -66,7 +68,7 @@ val prepareAuroraFonts = tasks.register("prepareAuroraFonts") {
             if (!output.exists() || output.length() < 10000L) {
                 val temp = directory.resolve("$name.download")
                 try {
-                    java.net.URI(url).toURL().openConnection().apply {
+                    URI(url).toURL().openConnection().apply {
                         connectTimeout = 15000
                         readTimeout = 30000
                     }.getInputStream().use { input -> temp.outputStream().use(input::copyTo) }
