@@ -81,7 +81,7 @@ def main(apk):
     select("Unknown Block", tap=True)
     select("Export block", tap=True)
     # DocumentsUI can open at internal storage or a remembered folder on API 29.
-    select("Select", "Use this folder", "Select folder", tap=True)
+    select('Allow access to "Downloads"', "Select", "Use this folder", "Select folder", tap=True)
     try:
         select("Allow", tap=True)
     except AssertionError:
