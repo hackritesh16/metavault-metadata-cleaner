@@ -42,9 +42,7 @@ internal val AuroraThemeNames = palettes.keys.toList()
 internal fun AuroraBackground(theme: String, scrollOffset: () -> Float, photo: Bitmap?, showTheme: Boolean) {
     Box(Modifier.fillMaxSize().background(Bg)) {
         if (photo != null) {
-            Image(photo.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            // Even a white photo must leave enough contrast behind secondary labels on glass.
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)))
+            Image(remember(photo) { photo.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         } else if (showTheme) {
             val colors = palettes[theme] ?: palettes.getValue("Aurora")
             val motion = LocalMotionEnabled.current
