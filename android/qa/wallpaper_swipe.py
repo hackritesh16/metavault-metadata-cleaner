@@ -41,7 +41,7 @@ def apply_photo():
     from block_viewer_smoke import select
     select("Show roots", tap=True)
     select("Downloads", tap=True)
-    select(name, "swatch", tap=True)
+    select(name, "swatch", tap=True, document_name=True)
     locate("Home", tap=True)
 
 
@@ -92,6 +92,7 @@ def swipe_profile(left, right, y):
 def check_wallpaper_and_swipes():
     apply_photo()
     locate("Inspect your files")
+    (REPORT / "glass-home.png").write_bytes(subprocess.check_output(["adb", "exec-out", "screencap", "-p"], timeout=10))
     pixel = capture()
     for y, expected in zip([150, 430, 650], COLORS):
         actual = pixel(3, y)
