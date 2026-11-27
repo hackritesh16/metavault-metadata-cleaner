@@ -251,6 +251,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
+        val prefs = getSharedPreferences("metavault_ui", Context.MODE_PRIVATE)
+        ActiveTheme.select(prefs.getString("theme", "Aurora") ?: "Aurora")
         setContent { MetaVaultApp(batch) }
     }
 }
@@ -262,10 +264,6 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var page by remember { mutableStateOf(Page.HOME) }
-    // Selecting a theme recolours the whole app (surfaces, accents, glass), not only the background glow.
-    remember {
-        ActiveTheme.select(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora")
-    }
     val selectedTheme = ActiveTheme.name
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
     var previewThemes by remember { mutableStateOf(true) }
