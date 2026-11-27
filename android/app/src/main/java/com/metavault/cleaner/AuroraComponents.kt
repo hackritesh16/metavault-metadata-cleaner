@@ -20,15 +20,28 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 
-private val reflection = Brush.linearGradient(listOf(
-    Color.White.copy(alpha = 0.075f), Color.White.copy(alpha = 0.022f), Color.White.copy(alpha = 0.045f)
-))
-private val glassEdge = Brush.linearGradient(listOf(
-    Color.White.copy(alpha = 0.40f), Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.27f)
-))
+// Broad, neutral reflections fade into clear glass. The edge catches light from the
+// opposite corners. Both brushes are static so a moving tab never rebuilds the material.
+private val reflection = Brush.verticalGradient(
+    0f to Color.White.copy(alpha = 0.16f),
+    0.22f to Color.White.copy(alpha = 0.055f),
+    0.68f to Color.White.copy(alpha = 0.025f),
+    1f to Color.White.copy(alpha = 0.075f)
+)
+private val glassEdge = Brush.linearGradient(
+    0f to Color.White.copy(alpha = 0.70f),
+    0.32f to Color.White.copy(alpha = 0.23f),
+    0.65f to Color.White.copy(alpha = 0.10f),
+    1f to Color.White.copy(alpha = 0.48f)
+)
+internal val LocalPhotoBackdrop = staticCompositionLocalOf { false }
 
-internal fun Modifier.auroraGlass(shape: Shape): Modifier =
-    clip(shape).background(reflection).border(1.dp, glassEdge, shape)
+@Composable
+internal fun Modifier.auroraGlass(shape: Shape): Modifier {
+    // Confine the neutral backing to controls so the surrounding photograph stays clear.
+    val backing = if (LocalPhotoBackdrop.current) Color.Black.copy(alpha = 0.52f) else Color.Transparent
+    return clip(shape).background(backing).background(reflection).border(1.dp, glassEdge, shape)
+}
 
 @Composable
 internal fun AuroraContentFrame(scaffoldPadding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {

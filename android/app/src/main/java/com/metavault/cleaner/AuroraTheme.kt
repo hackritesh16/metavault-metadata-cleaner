@@ -150,11 +150,9 @@ private fun schemeFor(p: ThemePalette) = darkColorScheme(
     inverseSurface = TextMain, inverseOnSurface = p.bg, inversePrimary = lerp(p.bg, p.accent, 0.6f)
 )
 
-// photoBackground is kept so existing call sites do not change; text no longer needs a shadow over photos.
-@Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun AuroraTheme(photoBackground: Boolean, content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled()) {
+    CompositionLocalProvider(LocalMotionEnabled provides systemMotionEnabled(), LocalPhotoBackdrop provides photoBackground) {
         MaterialTheme(colorScheme = schemeFor(ActiveTheme.palette), typography = AuroraTypography, content = content)
     }
 }

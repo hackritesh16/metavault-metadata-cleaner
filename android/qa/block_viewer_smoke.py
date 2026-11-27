@@ -15,7 +15,7 @@ def png_chunk(kind, data):
     return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
 
 
-def select(*labels, tap=False, scroll=False):
+def select(*labels, tap=False, scroll=False, document_name=False):
     for _ in range(14 if scroll else 5):
         shell("uiautomator", "dump", "/sdcard/block-viewer-window.xml")
         root = ElementTree.fromstring(shell("cat", "/sdcard/block-viewer-window.xml"))
@@ -25,7 +25,11 @@ def select(*labels, tap=False, scroll=False):
             if not text:
                 continue
             seen.append(text[:80])
-            if not any(label.casefold() in text.casefold().splitlines() for label in labels):
+            lines = text.casefold().splitlines()
+            if document_name:
+                # DocumentsUI includes the size and timestamp in a file tile's description.
+                lines = [line.partition(", ")[0] for line in lines]
+            if not any(label.casefold() in lines for label in labels):
                 continue
             if tap:
                 x1, y1, x2, y2 = bounds(node)

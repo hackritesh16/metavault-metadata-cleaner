@@ -32,8 +32,6 @@ internal fun AuroraBackground(theme: String, scrollOffset: () -> Float, photo: B
     Box(Modifier.fillMaxSize().background(paletteFor(theme).bg)) {
         if (photo != null) {
             Image(remember(photo) { photo.asImageBitmap() }, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            // Neutral scrim (the pre-Aurora 0.48 look): wallpaper stays clearly visible, glass text stays readable.
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.48f)))
         } else if (showTheme) {
             val palette = paletteFor(theme)
             val colors = GlowPair(palette.glowUpper, palette.glowLower)

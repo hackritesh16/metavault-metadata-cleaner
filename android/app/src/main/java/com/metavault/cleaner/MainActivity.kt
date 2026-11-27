@@ -251,6 +251,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
+        val prefs = getSharedPreferences("metavault_ui", Context.MODE_PRIVATE)
+        ActiveTheme.select(prefs.getString("theme", "Aurora") ?: "Aurora")
         setContent { MetaVaultApp(batch) }
     }
 }
@@ -262,10 +264,6 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     var page by remember { mutableStateOf(Page.HOME) }
-    // Selecting a theme recolours the whole app (surfaces, accents, glass), not only the background glow.
-    remember {
-        ActiveTheme.select(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("theme", "Aurora") ?: "Aurora")
-    }
     val selectedTheme = ActiveTheme.name
     var customPhotoUri by remember { mutableStateOf(context.getSharedPreferences("metavault_ui", Context.MODE_PRIVATE).getString("background_photo", null)) }
     var previewThemes by remember { mutableStateOf(true) }
@@ -1225,7 +1223,7 @@ private fun PageHeading(title: String, subtitle: String) {
 @Composable
 private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (Page) -> Unit) {
     val view = androidx.compose.ui.platform.LocalView.current
-    val shape = RoundedCornerShape(24.dp)
+    val shape = AuroraLayout.pill
     val activeTab = when (page) {
         Page.PHOTOS, Page.VIDEOS, Page.AUDIO, Page.PDFS, Page.DOCS -> Page.BROWSE
         Page.ABOUT -> Page.SETTINGS
@@ -1311,10 +1309,11 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                     }
                 }
                 Box(Modifier.width(tabWidth * tabs.size).then(swipe)) {
-                    val cellPx = with(androidx.compose.ui.platform.LocalDensity.current) { tabWidth.toPx() }
-                    val pillFill = remember(cellPx) { Brush.horizontalGradient(listOf(
-                        AccentSoft.copy(alpha = 0.42f), Color.White.copy(alpha = 0.26f), AccentSoft.copy(alpha = 0.34f)
-                    ), endX = cellPx) }
+                    val pillFill = remember { Brush.verticalGradient(
+                        0f to Color.White.copy(alpha = 0.44f),
+                        0.42f to Color.White.copy(alpha = 0.17f),
+                        1f to Color.White.copy(alpha = 0.28f)
+                    ) }
                     Canvas(Modifier.matchParentSize().graphicsLayer()) {
                         val cell = size.width / tabs.size
                         val inset = 2.dp.toPx()
@@ -1334,16 +1333,16 @@ private fun StableGlassBottomBar(page: Page, enabled: Boolean, onPageSelected: (
                                 drawRoundRect(brush = pillFill, size = pillSize, cornerRadius = pillCorner)
                             }
                             drawRoundRect(
-                                color = Color.White.copy(alpha = 0.52f),
+                                color = Color.White.copy(alpha = 0.68f),
                                 topLeft = Offset(left, top), size = pillSize,
                                 cornerRadius = pillCorner,
                                 style = Stroke(width = 1.dp.toPx())
                             )
                             drawRoundRect(
                                 color = Color.White.copy(alpha = 0.20f),
-                                topLeft = Offset(left + 8.dp.toPx(), top + 3.dp.toPx()),
+                                topLeft = Offset(left + pillHeight / 2f, top + 2.dp.toPx()),
                                 size = androidx.compose.ui.geometry.Size(
-                                    (right - left - 16.dp.toPx()).coerceAtLeast(0f), 2.dp.toPx()),
+                                    (right - left - pillHeight).coerceAtLeast(0f), 1.dp.toPx()),
                                 cornerRadius = CornerRadius(2.dp.toPx())
                             )
                         }
