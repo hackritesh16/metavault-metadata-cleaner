@@ -28,7 +28,7 @@ private fun probe(file: File): Clip {
             localInput +
             listOf(
                 "-show_entries",
-                "format=duration:stream=codec_type,width,height,avg_frame_rate:stream_side_data=rotation",
+                "format=duration:stream=codec_type,width,height,avg_frame_rate,color_transfer:stream_side_data=rotation",
                 "-of",
                 "json",
                 file.path,
@@ -40,6 +40,9 @@ private fun probe(file: File): Clip {
     val tracks = (0 until streams.length()).map { streams.getJSONObject(it) }
     val track =
         tracks.firstOrNull { it.optString("codec_type") == "video" } ?: error("No video track.")
+    require(track.optString("color_transfer") !in listOf("smpte2084", "arib-std-b67")) {
+        "HDR conversion is unsupported. Choose an SDR video."
+    }
     val w = track.getInt("width")
     val h = track.getInt("height")
     require(w > 0 && h > 0 && w.toLong() * h <= 36_000_000) {

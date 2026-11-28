@@ -188,6 +188,64 @@ class TransformDeviceTest {
         Assert.assertEquals(listOf(source.name), dir.listFiles()!!.map { it.name })
     }
 
+    @Test
+    fun batchReviewsSuccessfulItemsAndBacksUpBeforeOverwrite() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val session = FileToolsSession.get(context)
+        val bmp = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888)
+        val sources =
+            listOf("batch-one.png", "batch-two.png").map { name ->
+                File(dir, name).also { file ->
+                    file.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                }
+            }
+        bmp.recycle()
+        val originals = sources.map { it.readBytes() }
+        val unsupported = File(dir, "unknown.xyz").apply { writeText("unsupported") }
+        fun awaitIdle() {
+            val deadline = android.os.SystemClock.elapsedRealtime() + 30000
+            while (true) {
+                var busy = true
+                instrumentation.runOnMainSync { busy = session.busy }
+                if (!busy) return
+                check(android.os.SystemClock.elapsedRealtime() < deadline) { session.message }
+                Thread.sleep(80)
+            }
+        }
+        try {
+            instrumentation.runOnMainSync {
+                session.select((sources + unsupported).map(Uri::fromFile))
+            }
+            awaitIdle()
+            instrumentation.runOnMainSync {
+                session.prepare(TransformPlan(percent = 50, image = Output.PNG))
+            }
+            awaitIdle()
+            Assert.assertEquals(session.message, 2, session.results.size)
+            Assert.assertTrue(session.errors.containsKey(Uri.fromFile(unsupported)))
+            sources.forEachIndexed { i, file ->
+                Assert.assertArrayEquals(originals[i], file.readBytes())
+            }
+            instrumentation.runOnMainSync { session.save(null) }
+            awaitIdle()
+            Assert.assertEquals(session.errors.toString(), 2, session.saved.size)
+            sources.forEachIndexed { i, file ->
+                val info = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.path, info)
+                Assert.assertEquals(48, info.outWidth)
+                val backup =
+                    File(context.filesDir, "backups").listFiles()!!.single {
+                        it.name.endsWith("__" + file.name + ".bak")
+                    }
+                Assert.assertArrayEquals(originals[i], backup.readBytes())
+                File(backup.path + ".uri").delete()
+                backup.delete()
+            }
+        } finally {
+            instrumentation.runOnMainSync { session.close() }
+        }
+    }
+
     private fun java.io.InputStream.readNBytesCompat(length: Int) =
         ByteArray(length).also { java.io.DataInputStream(this).readFully(it) }
 }

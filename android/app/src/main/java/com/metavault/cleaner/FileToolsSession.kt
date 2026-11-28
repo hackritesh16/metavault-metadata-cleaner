@@ -115,7 +115,17 @@ internal class FileToolsSession private constructor(private val context: Applica
                                             Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
                                     )
                                 }
-                                toolSource(context, uri)
+                                try {
+                                    toolSource(context, uri)
+                                } catch (_: Exception) {
+                                    ToolSource(
+                                        uri,
+                                        uri.lastPathSegment?.substringAfterLast('/')
+                                            ?: "Unavailable file",
+                                        "",
+                                        null,
+                                    )
+                                }
                             }
                         }
                     for (item in sources) names[item.uri] =
@@ -224,20 +234,30 @@ internal class FileToolsSession private constructor(private val context: Applica
                     message = "Preparing ${index+1} of ${sources.size} · ${item.name}"
                     progress = index.toFloat() / sources.size
                     try {
-                        val result =
-                            withContext(Dispatchers.IO) {
-                                require(
-                                    dir.listFiles().orEmpty().sumOf { it.length() } <
-                                        TRANSFORM_LIMIT * 2
-                                ) {
-                                    "Batch cache is full. Save a smaller batch."
+                        val parent = currentCoroutineContext()
+                        // Hand off the finished scratch file even if Cancel arrives on the final
+                        // dispatcher hop.
+                        withContext(NonCancellable) {
+                            val result =
+                                withContext(Dispatchers.IO) {
+                                    require(
+                                        dir.listFiles().orEmpty().sumOf { it.length() } <
+                                            TRANSFORM_LIMIT * 2
+                                    ) {
+                                        "Batch cache is full. Save a smaller batch."
+                                    }
+                                    prepareTransform(
+                                        context,
+                                        item,
+                                        plan,
+                                        dir,
+                                        { parent.ensureActive() },
+                                    ) { fraction ->
+                                        progress = (index + fraction) / sources.size
+                                    }
                                 }
-                                prepareTransform(context, item, plan, dir, { ensureActive() }) {
-                                    fraction ->
-                                    progress = (index + fraction) / sources.size
-                                }
-                            }
-                        results.add(result)
+                            results.add(result)
+                        }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -288,6 +308,7 @@ internal class FileToolsSession private constructor(private val context: Applica
                     throw e
                 } catch (e: Exception) {
                     errors[uri] = e.localizedMessage ?: "Could not save. Try another folder."
+                    if (tree == null) refresh++
                 }
                 progress = (i + 1f) / remaining.size
             }
