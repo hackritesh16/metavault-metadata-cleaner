@@ -152,7 +152,7 @@ internal data class ExportItem(val uri: Uri, val name: String, val format: Batch
     val extension = name.substringAfterLast('.', "").ifBlank { format?.extension.orEmpty() }
 }
 
-private object LocalFiles : ActivityResultContracts.OpenMultipleDocuments() {
+internal object LocalFiles : ActivityResultContracts.OpenMultipleDocuments() {
     override fun createIntent(context: Context, input: Array<String>) =
         super.createIntent(context, input).putExtra(Intent.EXTRA_LOCAL_ONLY, true)
 }

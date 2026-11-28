@@ -1,0 +1,8 @@
+MetaVault File Tools uses FFmpeg Kit Video 2.1.0, including dynamically linked FFmpeg 8.
+FFmpeg Kit and FFmpeg in this build are distributed under the GNU Lesser General Public
+License, version 3. The LGPL and referenced GPL text accompany this notice.
+Upstream source and build scripts: https://github.com/sk3llo/ffmpeg-kit-flutter
+FFmpeg source: https://ffmpeg.org/releases/ffmpeg-8.0.tar.xz
+Android wrapper source: https://repo.maven.apache.org/maven2/com/antonkarpenko/ffmpeg-kit-video/2.1.0/ffmpeg-kit-video-2.1.0-sources.jar
+PdfBox-Android (Tom Roush and Apache PDFBox contributors) and AndroidX HeifWriter
+(Android Open Source Project) are licensed under the Apache License 2.0.

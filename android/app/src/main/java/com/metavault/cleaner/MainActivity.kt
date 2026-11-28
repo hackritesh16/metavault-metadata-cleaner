@@ -246,6 +246,11 @@ private fun loadBackups(context: Context): List<BackupEntry> {
 }
 
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == FileToolsService.SHOW) FileToolsSession.get(this).visible = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -253,6 +258,7 @@ class MainActivity : ComponentActivity() {
         val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
         val prefs = getSharedPreferences("metavault_ui", Context.MODE_PRIVATE)
         ActiveTheme.select(prefs.getString("theme", "Aurora") ?: "Aurora")
+        if (intent.action == FileToolsService.SHOW) FileToolsSession.get(this).visible = true
         setContent { MetaVaultApp(batch) }
     }
 }
@@ -293,6 +299,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
     var outBase by remember { mutableStateOf("metavault-clean") }
     var outExt by remember { mutableStateOf("jpg") }
     var lastAction by remember { mutableStateOf("Clean copy saved") }
+    val fileTools = remember { FileToolsSession.get(context) }
     var history by batch.history
     var backups by remember { mutableStateOf(listOf<BackupEntry>()) }
     var deviceMedia by remember { mutableStateOf(emptyList<DeviceMedia>()) }
@@ -340,10 +347,10 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         lifecycle?.addObserver(observer)
         onDispose { lifecycle?.removeObserver(observer) }
     }
-    LaunchedEffect(batch.refresh) {
-        if (batch.refresh > 0) thumbCache.evictAll()
+    LaunchedEffect(batch.refresh, fileTools.refresh) {
+        if (batch.refresh + fileTools.refresh > 0) thumbCache.evictAll()
     }
-    LaunchedEffect(reloadTick, batch.refresh) {
+    LaunchedEffect(reloadTick, batch.refresh, fileTools.refresh) {
         libraryLoading = true
         val (list, saved) = withContext(Dispatchers.IO) { loadDeviceMedia(context) to loadBackups(context) }
         deviceMedia = list
@@ -351,7 +358,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
         libraryLoading = false
     }
 
-    LaunchedEffect(selectedUri, hasLocationAccess, batch.refresh, metadataReloadTick) {
+    LaunchedEffect(selectedUri, hasLocationAccess, batch.refresh, fileTools.refresh, metadataReloadTick) {
         val uri = selectedUri
         fields = null
         inspectError = null
@@ -533,6 +540,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
 
     AuroraTheme(photoBackground = customPhotoBitmap != null) {
         BatchCleanerDialog(batch)
+        FileToolsDialog(fileTools)
         requestedCategory?.let { requested ->
             AlertDialog(
                 onDismissRequest = { requestedCategory = null },
@@ -621,6 +629,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                         convert = convert, onConvert = { convert = it }, output = output, onOutput = { output = it },
                                         busy = busy, status = status, ready = readyBytes != null,
                                         onBatch = { batch.visible = true },
+                                        onTools = { fileTools.open(selectedUri) },
                                         onChangeFile = { if (!busy) page = Page.BROWSE },
                                         onClean = {
                                             val uri = selectedUri
@@ -657,6 +666,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                                         readyBytes = bytes
                                                         outBase = fileName.substringBeforeLast('.', fileName)
                                                         outExt = ext
+                                                        fileTools.reviewCleaned(uri, bytes, outBase, ext, if (isImageExt(ext)) mimeForExt(ext) else mime)
                                                         lastAction = "Clean copy saved"
                                                         status = "Cleaned copy prepared. Original is untouched. " + note
                                                     }.onFailure { status = "Could not clean file: ${it.message}" }
@@ -686,6 +696,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                                                 readyBytes = r.bytes
                                                                 outBase = fileName.substringBeforeLast('.', fileName) + "-edited"
                                                                 outExt = fileName.substringAfterLast('.', "jpg")
+                                                                fileTools.reviewCleaned(uri, r.bytes, outBase, outExt, mime)
                                                                 lastAction = "Edited copy saved"
                                                                 status = "Edited copy prepared. Original is untouched. " + r.note
                                                             }.onFailure { status = "Could not edit metadata: ${it.message}" }
@@ -706,7 +717,7 @@ private fun MetaVaultApp(batch: BatchCleanerModel) {
                                             )
                                         }
                                     )
-                                    Page.HISTORY -> HistoryPage(history, backups, busy = busy, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
+                                    Page.HISTORY -> HistoryPage(fileTools.history + history, backups, busy = busy, onRestore = { restoreBackup(it) }, onDeleteBackup = { deleteBackup(it) })
                                     Page.SETTINGS -> SettingsPage(
                                         allFiles = allFiles, selectedTheme = selectedTheme, hasCustomPhoto = customPhotoUri != null,
                                         previewThemes = previewThemes, onPreviewThemes = { previewThemes = it },
@@ -1013,7 +1024,7 @@ private fun CleanerPage(
     fileName: String, mime: String, hasFile: Boolean, isImage: Boolean,
     convert: Boolean, onConvert: (Boolean) -> Unit, output: String, onOutput: (String) -> Unit,
     busy: Boolean, status: String, ready: Boolean,
-    onChangeFile: () -> Unit, onClean: () -> Unit, onBatch: () -> Unit,
+    onChangeFile: () -> Unit, onClean: () -> Unit, onBatch: () -> Unit, onTools: () -> Unit,
     extra: @Composable () -> Unit,
     result: @Composable () -> Unit
 ) {
@@ -1022,6 +1033,7 @@ private fun CleanerPage(
         AuroraOutlinedButton(onClick = onBatch, enabled = !busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text("Batch clean files")
         }
+        AuroraOutlinedButton(onClick = onTools, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Resize, compress or convert") }
         if (!hasFile) {
             AuroraGlassCard {
                 Icon(Icons.Default.AutoAwesome, null, tint = AccentSoft, modifier = Modifier.size(30.dp))

@@ -25,11 +25,19 @@ internal fun backupDigest(input: InputStream, output: OutputStream? = null): Byt
 internal fun writeWithRecovery(
     bytes: ByteArray, backup: File, openWriter: () -> OutputStream, openReader: () -> InputStream
 ) {
+    writeWithRecovery(backup, openWriter, openReader, write = { it.write(bytes) },
+        verify = { verifySavedBytes(bytes, openReader) })
+}
+
+internal fun writeWithRecovery(
+    backup: File, openWriter: () -> OutputStream, openReader: () -> InputStream,
+    write: (OutputStream) -> Unit, verify: () -> Unit
+) {
     // Opening a writer can require permission; only a successfully opened writer may have changed bytes.
     val writer = openWriter()
     try {
-        writer.use { it.write(bytes) }
-        verifySavedBytes(bytes, openReader)
+        writer.use(write)
+        verify()
     } catch (e: Exception) {
         val restored = runCatching {
             val digest = backup.inputStream().use { input -> openWriter().use { backupDigest(input, it) } }
