@@ -8,3 +8,4 @@ if ! grep -Eq 'OK \([0-9]+ tests?\)' <<<"$result"; then
     echo "::error::$(echo "$result" | tail -c 3000 | tr '\n' ' ')"
     exit 1
 fi
+python3 android/qa/transform_save_smoke.py

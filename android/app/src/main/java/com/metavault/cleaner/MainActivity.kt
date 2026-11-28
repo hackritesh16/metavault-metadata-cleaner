@@ -246,6 +246,11 @@ private fun loadBackups(context: Context): List<BackupEntry> {
 }
 
 class MainActivity : ComponentActivity() {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == FileToolsService.SHOW) FileToolsSession.get(this).visible = true
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
@@ -253,6 +258,7 @@ class MainActivity : ComponentActivity() {
         val batch = androidx.lifecycle.ViewModelProvider(this)[BatchCleanerModel::class.java]
         val prefs = getSharedPreferences("metavault_ui", Context.MODE_PRIVATE)
         ActiveTheme.select(prefs.getString("theme", "Aurora") ?: "Aurora")
+        if (intent.action == FileToolsService.SHOW) FileToolsSession.get(this).visible = true
         setContent { MetaVaultApp(batch) }
     }
 }
